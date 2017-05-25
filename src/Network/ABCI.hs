@@ -52,7 +52,7 @@ maxMessageLen :: Int
 maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
 
 defaultSettings :: ServerSettings
-defaultSettings = serverSettings 46658 "*"
+defaultSettings = serverSettings 46658 "127.0.0.1"
 
 serveAppWith
   :: (MonadIO m, MonadBaseControl IO m)
