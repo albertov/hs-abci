@@ -124,9 +124,7 @@ processTransaction stateVar txData update = STM.atomically $ do
          else
            return (BadNonce, "Invalid Nonce")
     Left err ->
-      -- BadNonce instead of EncodingError because the tests expect it that
-      -- way
-      return (BadNonce, fromString err)
+      return (EncodingError, fromString err)
 
 
 parseSerial :: ByteString -> Either String Word64
