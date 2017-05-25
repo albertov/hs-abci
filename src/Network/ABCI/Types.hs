@@ -93,52 +93,95 @@ type EndBlock   = 'EndBlock
 
 -- | A type-safe 'Request' GADT tagged with the 'MsgType'
 data Request (t :: MsgType) where
-  RequestEcho       :: !Text              -> Request Echo
-  RequestFlush      ::                       Request Flush
-  RequestInfo       ::                       Request Info
+
+  RequestEcho ::
+    { requestEcho'message :: !Text
+    } -> Request Echo
+
+  RequestFlush :: Request Flush
+
+  RequestInfo :: Request Info
+
   RequestSetOption  ::
     { requestSetOption'key   :: !Text
     , requestSetOption'value :: !Text
-    }                                     -> Request SetOption
-  RequestDeliverTx  :: !ByteString        -> Request DeliverTx
-  RequestCheckTx    :: !ByteString        -> Request CheckTx
-  RequestCommit     ::                       Request Commit
+    } -> Request SetOption
+
+  RequestDeliverTx ::
+    { requestDeliverTx'tx :: !ByteString
+    } -> Request DeliverTx
+
+  RequestCheckTx ::
+    { requestCheckTx'tx :: !ByteString
+    } -> Request CheckTx
+
+
+  RequestCommit :: Request Commit
+
   RequestQuery  ::
     { requestQuery'data   :: !ByteString
     , requestQuery'path   :: !Text
     , requestQuery'height :: !Word64
     , requestQuery'prove  :: !Bool
     }                                     -> Request Query
-  RequestInitChain  :: ![Proto.Validator] -> Request InitChain
-  RequestBeginBlock :: !ByteString
-                    -> !(Maybe Proto.Header)
-                    -> Request BeginBlock
-  RequestEndBlock   :: !Word64            -> Request EndBlock
+  RequestInitChain ::
+    { requestInitChain'validators :: ![Proto.Validator]
+    } -> Request InitChain
+
+  RequestBeginBlock ::
+    { requestInitBlock'hash   :: !ByteString
+    , requestInitBlock'header :: !(Maybe Proto.Header)
+    } -> Request BeginBlock
+
+  RequestEndBlock ::
+    { requestEndBlock'height :: !Word64
+    } -> Request EndBlock
 
 deriving instance Show (Request t)
 
 -- | A type-safe 'Response' GADT tagged with the 'MsgType'
 data Response (t :: MsgType) where
-  ResponseException  :: !Text              -> Response t
-  ResponseEcho       :: !Text              -> Response Echo
-  ResponseFlush      ::                       Response Flush
-  ResponseInfo       ::
+
+  ResponseException ::
+    { responseException'error :: !Text
+    } -> Response t
+
+  ResponseEcho ::
+    { responseEcho'message :: !Text
+    } -> Response Echo
+
+  ResponseFlush :: Response Flush
+
+  ResponseInfo ::
     { responseInfo'data             :: !Text
-    , responseInfo'version           :: !Text
+    , responseInfo'version          :: !Text
     , responseInfo'lastBlockHeight  :: !Word64
     , responseInfo'lastBlockAppHash :: !ByteString
-    }                                      -> Response Info
-  ResponseSetOption  :: !Text              -> Response SetOption
-  ResponseDeliverTx  :: !Proto.CodeType
-                     -> !ByteString
-                     -> !Text              -> Response DeliverTx
-  ResponseCheckTx    :: !Proto.CodeType
-                     -> !ByteString
-                     -> !Text              -> Response CheckTx
-  ResponseCommit     :: !Proto.CodeType
-                     -> !ByteString
-                     -> !Text              -> Response Commit
-  ResponseQuery      ::
+    } -> Response Info
+
+  ResponseSetOption ::
+    { responseSetOption'log :: !Text
+    } -> Response SetOption
+
+  ResponseDeliverTx ::
+    { responseDeliverTx'code :: !Proto.CodeType
+    , responseDeliverTx'data :: !ByteString
+    , responseDeliverTx'log  :: !Text
+    } -> Response DeliverTx
+
+  ResponseCheckTx ::
+    { responseCheckTx'code :: !Proto.CodeType
+    , responseCheckTx'data :: !ByteString
+    , responseCheckTx'log  :: !Text
+    } -> Response CheckTx
+
+  ResponseCommit ::
+    { responseCommit'code :: !Proto.CodeType
+    , responseCommit'data :: !ByteString
+    , responseCommit'log  :: !Text
+    } -> Response Commit
+
+  ResponseQuery ::
     { responseQuery'code   :: !Proto.CodeType
     , responseQuery'index  :: !Int64
     , responseQuery'key    :: !ByteString
@@ -146,10 +189,15 @@ data Response (t :: MsgType) where
     , responseQuery'proof  :: !ByteString
     , responseQuery'height :: !Word64
     , responseQuery'log    :: !Text
-    }                                      -> Response Query
-  ResponseInitChain  ::                       Response InitChain
-  ResponseBeginBlock ::                       Response BeginBlock
-  ResponseEndBlock   :: ![Proto.Validator] -> Response EndBlock
+    } -> Response Query
+
+  ResponseInitChain :: Response InitChain
+
+  ResponseBeginBlock :: Response BeginBlock
+
+  ResponseEndBlock ::
+    { responseEndBlock'diffs :: ![Proto.Validator]
+    } -> Response EndBlock
 
 deriving instance Show (Response t)
 
