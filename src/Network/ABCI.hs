@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
@@ -140,4 +141,4 @@ respondErr err =
 beWordFromBytes :: BS.ByteString -> Maybe Word64
 beWordFromBytes s | BS.length s > 8 = Nothing
 beWordFromBytes s = Just (snd (BS.foldr' step (0,0) s)) where
-  step w (pos,acc) = (pos+1, acc + (fromIntegral w `shiftL` (pos*8)))
+  step w (!pos,!acc) = (pos+1, acc + (fromIntegral w `shiftL` (pos*8)))
