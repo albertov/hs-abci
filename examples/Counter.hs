@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
@@ -5,40 +6,40 @@
 module Counter (main) where
 
 import           Network.ABCI
+import           Control.Monad (when)
 import qualified Control.Concurrent.STM as STM
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
-import           Data.Monoid ((<>))
+import           Data.Int (Int64)
 import qualified Data.Binary.Put as Put
 import           Data.Hex (unhex)
 import           Data.String (fromString)
 import           Data.Text (Text)
-import           Data.Word (Word64)
 import           Text.Printf (printf)
 
 data CounterState = CounterState
-  { csEnableSerial     :: !Bool
-  , csTxCount          :: !Word64
-  , csHashCount        :: !Word64
-  , csLastBlockHeight  :: !Word64
-  , csLastBlockAppHash :: !ByteString
+  { csSerial    :: !Bool
+  , csTxCount   :: !Int64
+  , csHashCount :: !Int64
   } deriving Show
 
 initialState :: CounterState
-initialState = CounterState False 0 0 0 ""
+initialState = CounterState False 0 0
 
 main :: IO ()
 main = do
   stateVar <- STM.newTVarIO initialState
 
-  let setEnableSerial v =
-        STM.atomically $
-          STM.modifyTVar' stateVar (\s -> s { csEnableSerial = v})
+  let enableSerial =
+        STM.modifyTVar' stateVar (\s -> s { csSerial = True })
 
       incHashCount =
-        STM.atomically $
-          STM.modifyTVar' stateVar (\s -> s { csHashCount = csHashCount s + 1})
+        STM.modifyTVar' stateVar (\s -> s { csHashCount = csHashCount s + 1 })
+
+      incTxCount =
+        STM.modifyTVar' stateVar (\s -> s { csTxCount = csTxCount s + 1 })
+
 
   serveApp $ \sockAddr -> do
     putStrLn ("Received connection from " ++ show sockAddr)
@@ -48,87 +49,74 @@ main = do
     return $ App $ \case
       RequestEcho msg -> return (ResponseEcho msg)
 
-      RequestFlush    -> return ResponseFlush
+      RequestFlush -> return def
 
-      RequestInfo    -> do
-        CounterState{ csHashCount
-                    , csTxCount
-                    , csLastBlockHeight
-                    , csLastBlockAppHash
-                    } <- STM.readTVarIO stateVar
-        return ResponseInfo
+      RequestInfo -> do
+        CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
+        return def
           { responseInfo'data =
-              fromString $ printf "# hashes: %d # txs: %d"
-                csHashCount csTxCount
-          , responseInfo'version = "1.0"
-          , responseInfo'lastBlockHeight   = csLastBlockHeight
-          , responseInfo'lastBlockAppHash  = csLastBlockAppHash
+              fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
           }
 
-      RequestSetOption "serial" "on"  -> do
-        setEnableSerial True
-        return (ResponseSetOption "enabled serial")
-      RequestSetOption "serial" "off" -> do
-        setEnableSerial False
-        return (ResponseSetOption "disabled serial")
-      RequestSetOption "serial" _ ->
-        return (ResponseException "Invalid value for option 'serial'")
-      RequestSetOption k _ ->
-        return (ResponseException ("Invalid option '"<>k<>"'"))
+      RequestSetOption key value -> do
+        when (key=="serial" && value=="on") (STM.atomically enableSerial)
+        return def
 
       RequestDeliverTx txData -> do
-        let update serial =
-              STM.modifyTVar' stateVar (\s -> s {csTxCount = serial})
-        (code, log') <- processTransaction stateVar txData update
+        (code, log') <- processTransaction stateVar txData incTxCount
         return (ResponseDeliverTx code "" log')
 
       RequestCheckTx txData -> do
-        let update _ = return ()
-        (code, log') <- processTransaction stateVar txData update
+        (code, log') <- processTransaction stateVar txData (return ())
         return (ResponseCheckTx code "" log')
 
       RequestCommit -> do
-        incHashCount
+        STM.atomically incHashCount
         CounterState{csTxCount} <- STM.readTVarIO stateVar
         let data' = if csTxCount == 0 then "" else serializeBe csTxCount
-        return (ResponseCommit OK data' "Committed")
+        return (ResponseCommit OK data' "")
 
-      RequestQuery{} ->
-        return (ResponseException "Not implemented")
+      RequestQuery{requestQuery'path=path} -> do
+        state <- STM.readTVarIO stateVar
+        let retVal v = return def { responseQuery'value = fromString (show v) }
+            retErr msg = return def { responseQuery'log = fromString msg }
+        case path of
+          "hash" -> retVal (csHashCount state)
+          "tx"   -> retVal (csTxCount state)
+          p  -> retErr $ printf
+                  "Invalid query path. Expected hash or tx, got %s" (show p)
 
-      RequestInitChain{} ->
-        return (ResponseException "Not implemented")
+      _ -> return (ResponseException "Not implemented")
 
-      RequestBeginBlock{} ->
-        return (ResponseException "Not implemented")
 
-      RequestEndBlock{} ->
-        return (ResponseException "Not implemented")
-
-serializeBe :: Word64 -> ByteString
-serializeBe = LBS.toStrict . Put.runPut . Put.putWord64be
+serializeBe :: Int64 -> ByteString
+serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
 
 processTransaction
   :: STM.TVar CounterState
   -> ByteString
-  -> (Word64 -> STM.STM ())
+  -> (STM.STM ())
   -> IO (CodeType, Text)
-processTransaction stateVar txData update = STM.atomically $ do
-  CounterState{csEnableSerial,csTxCount} <- STM.readTVar stateVar
-  case parseSerial txData of
-    Right serial -> do
-      if csEnableSerial && serial == csTxCount || not csEnableSerial
-         then do
-           update (serial+1)
-           return (OK, "OK")
-         else
-           return (BadNonce, "Invalid Nonce")
+processTransaction stateVar txData increment = STM.atomically $ do
+  CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
+  case parseTxValue txData of
+    Right txValue -> do
+      if (csSerial && txValue /= csTxCount)
+        then return
+          ( BadNonce
+          , fromString
+             (printf "Invalid nonce. Expected %d, got %d" csTxCount txValue)
+          )
+        else increment >> return (OK, "")
     Left err ->
       return (EncodingError, fromString err)
 
 
-parseSerial :: ByteString -> Either String Word64
-parseSerial s =
+parseTxValue :: ByteString -> Either String Int64
+parseTxValue s =
   case maybe (Just s) unhex (BS.stripPrefix "0x" s) of
-    Just uh -> maybe (Left "Unsupported varlen") Right (beWordFromBytes uh)
+    Just uh ->
+      maybe (Left (printf "Max tx size is 8 bytes, got %d" (BS.length uh)))
+            (Right . fromIntegral)
+            (beWordFromBytes uh)
     Nothing -> Left ("Invalid hex string: " ++ show s)

@@ -1,6 +1,8 @@
-{-# LANGUAGE GADTs #-}
 {-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
@@ -38,6 +40,8 @@ module Network.ABCI.Types (
 , toProtoResponse
 , withProtoRequest
 
+-- * Re-exports
+, def
 -- * Protobuf safe types re-exports
 
 , Proto.BlockID (..)
@@ -51,7 +55,7 @@ module Network.ABCI.Types (
 import qualified Proto.Network.ABCI.Types as Proto
 
 import           Data.ByteString (ByteString)
-import           Data.Default (def)
+import           Data.Default (Default(def))
 import           Data.Int (Int64)
 import           Data.Text (Text)
 import           Data.Word (Word64)
@@ -200,6 +204,18 @@ data Response (t :: MsgType) where
     } -> Response EndBlock
 
 deriving instance Show (Response t)
+
+instance Default (Response Flush) where
+  def = ResponseFlush
+
+instance Default (Response Info) where
+  def = ResponseInfo "" "" 0 ""
+
+instance Default (Response SetOption) where
+  def = ResponseSetOption ""
+
+instance Default (Response Query) where
+  def = ResponseQuery def 0 "" "" "" 0 ""
 
 
 -- | Translates type-safe 'Response' GADT to the unsafe
