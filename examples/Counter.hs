@@ -120,7 +120,7 @@ processTransaction stateVar txData update = STM.atomically $ do
       if csEnableSerial && serial == csTxCount || not csEnableSerial
          then do
            update (serial+1)
-           return (OK, "Updated serial")
+           return (OK, "OK")
          else
            return (BadNonce, "Invalid Nonce")
     Left err ->
