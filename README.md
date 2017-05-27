@@ -23,3 +23,8 @@ Build blockchain applications in Haskell for
 
 1. Make sure cabal-install is somewhere in the `PATH`
 1. Run `cabal install`
+
+## Run test suite
+
+1. Install [stack](https://www.haskellstack.org)
+1. Run `stack test`
