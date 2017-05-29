@@ -6,6 +6,7 @@
 module Counter (main) where
 
 import           Network.ABCI
+import           Network.ABCI.Internal.Wire (beWordFromBytes)
 import           Control.Monad (when)
 import qualified Control.Concurrent.STM as STM
 import           Data.ByteString (ByteString)
@@ -115,8 +116,5 @@ processTransaction stateVar txData increment = STM.atomically $ do
 parseTxValue :: ByteString -> Either String Int64
 parseTxValue s =
   case maybe (Just s) unhex (BS.stripPrefix "0x" s) of
-    Just uh ->
-      maybe (Left (printf "Max tx size is 8 bytes, got %d" (BS.length uh)))
-            (Right . fromIntegral)
-            (beWordFromBytes uh)
+    Just uh -> fromIntegral <$> beWordFromBytes uh
     Nothing -> Left ("Invalid hex string: " ++ show s)

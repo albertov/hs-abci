@@ -6,7 +6,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
-module Network.ABCI.Types (
+module Network.ABCI.Internal.Types (
 
 -- * Type-safe 'Request' / 'Response' GADTs
 
