@@ -61,7 +61,7 @@ decodeLengthPrefixC = go "" initialDecoder
     go "" decoder = do
       mInput <- await
       case mInput of
-        Nothing -> go "" (Get.pushEndOfInput decoder)
+        Nothing -> return ()
         Just s  -> go "" (Get.pushChunk decoder s)
     go leftOver decoder =
       go "" (Get.pushChunk decoder leftOver)
