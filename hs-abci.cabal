@@ -60,6 +60,9 @@ test-suite hs-abci-test
   main-is:             Spec.hs
   build-depends:
       base
+    , binary
+    , bytestring
+    , conduit
     , hs-abci
     , hspec
     , hspec-core

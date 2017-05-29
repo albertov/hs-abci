@@ -4,7 +4,7 @@
 module Network.ABCI (
   serveApp
 , serveAppWith
-
+, defaultSettings
 -- * Re-exports
 , serverSettings
 , module ReExport
