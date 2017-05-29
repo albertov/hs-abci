@@ -9,17 +9,11 @@ author:              Alberto Valverde González
 maintainer:          alberto@toscat.net
 copyright:           2017 Alberto Valverde González
 category:            Network
-build-type:          Custom
+build-type:          Simple
 extra-source-files:
     README.md
   , src/Network/ABCI/types.proto
 cabal-version:       >=1.10
-
-custom-setup
-  setup-depends:
-      base >= 4.7 && < 5
-    , proto-lens-protoc
-    , Cabal >= 1.18 && < 3
 
 library
   hs-source-dirs:      src

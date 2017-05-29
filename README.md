@@ -12,9 +12,6 @@ Build blockchain applications in Haskell for
   cd hs-abci
   ```
 
-1. Install [protobuf](https://github.com/google/protobuf)' Protocol Compiler
-   and make sure the `protoc` binary is somewhere in the `PATH`.
-
 ## Install
 
 ### With stack
