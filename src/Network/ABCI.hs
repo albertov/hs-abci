@@ -12,10 +12,10 @@ module Network.ABCI (
 
 import qualified Proto.Network.ABCI.Types as ABCI
 import           Network.ABCI.Internal.Wire as Wire
-import           Network.ABCI.Internal.Types ( App(..)
-                                             , withProtoRequest
-                                             , toProtoResponse)
-import           Network.ABCI.Internal.Types as ReExport hiding (
+import           Network.ABCI.Types ( App(..)
+                                    , withProtoRequest
+                                    , toProtoResponse)
+import           Network.ABCI.Types as ReExport hiding (
                     withProtoRequest
                   , toProtoResponse)
 

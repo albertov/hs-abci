@@ -19,7 +19,7 @@ library
   hs-source-dirs:      src
   exposed-modules:
       Network.ABCI
-    , Network.ABCI.Internal.Types
+    , Network.ABCI.Types
     , Network.ABCI.Internal.Wire
   other-modules:
       Proto.Network.ABCI.Types
