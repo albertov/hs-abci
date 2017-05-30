@@ -71,9 +71,6 @@ spec = do
 
   describe "decodeLengthPrefixC" $ do
 
-    it "fails gracefully when given a negative length length varlen encoded string" $
-      pendingWith "write this test"
-
     it "fails gracefully when given a string largen than maxMessageLen" $
       pendingWith "write this test"
 
