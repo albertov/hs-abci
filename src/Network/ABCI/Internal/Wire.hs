@@ -31,7 +31,7 @@ import           Data.Monoid ((<>))
 import           Data.Word (Word64)
 import           Text.Printf (printf)
 
-maxMessageLen :: Int
+maxMessageLen :: Word64
 maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
 
 
@@ -80,11 +80,11 @@ putLengthPrefixedByteString s = do
 getLengthPrefixedByteString :: Get.Get BS.ByteString
 getLengthPrefixedByteString = do
   lenLen <- fromIntegral <$> Get.getWord8
-  mLen <- fmap fromIntegral . beWordFromBytes <$> Get.getByteString lenLen
+  mLen <- beWordFromBytes <$> Get.getByteString lenLen
   case mLen of
     Right len ->
       if len <= maxMessageLen
-        then Get.getByteString len
+        then Get.getByteString (fromIntegral len)
         else fail "Message is too large"
     Left err -> fail err
 {-# INLINEABLE getLengthPrefixedByteString #-}

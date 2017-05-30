@@ -58,21 +58,18 @@ spec = do
         let conduit = chunksProducer bytes nonNegativeChunkSizes
                   =$= encodeLengthPrefixC
                   =$= decodeLengthPrefixC
-                  =$= consumer
+                  =$= consumeValidChunks
             bytes = BS.pack bytelist
-            -- This consumer will concatenate all the valid decoded chunks.
-            -- The first error encountered will be the result of the 'Consumer'
-            -- without checking for further errors
-            consumer = CL.fold step (Right BS.empty)
-            step (Right acc) (Right s)  = Right (acc <> s)
-            step (Right _)   (Left err) = Left err
-            step (Left err)  _          = Left err
         in runIdConduit conduit == Right bytes
 
   describe "decodeLengthPrefixC" $ do
 
     it "fails gracefully when given a string largen than maxMessageLen" $
-      pendingWith "write this test"
+      let ginormousSizeVarLen = 8 `BS.cons` runPut (Put.putWord64be maxBound)
+          conduit = yield ginormousSizeVarLen
+                =$= decodeLengthPrefixC
+                =$= consumeValidChunks
+      in runIdConduit conduit `shouldSatisfy` isLeft
 
 
 -- Takes a 'ByteString' and a list of chunkSizes >= 0 and yields the
@@ -96,6 +93,18 @@ randomBytestringOfLength len = BS.pack <$> replicateM len arbitrary
 
 runIdConduit :: Sink () Identity a -> a
 runIdConduit = runIdentity . runConduit
+
+-- This consumer will concatenate all the valid decoded chunks.
+-- The first error encountered will be the result of the 'Consumer'
+-- without checking for further errors
+consumeValidChunks
+  :: Monad m
+  => Sink (Either String BS.ByteString) m (Either String BS.ByteString)
+consumeValidChunks = CL.fold step (Right BS.empty)
+  where
+    step (Right acc) (Right s)  = Right (acc <> s)
+    step (Right _)   (Left err) = Left err
+    step (Left err)  _          = Left err
 
 runPut :: Put.Put -> BS.ByteString
 runPut = LBS.toStrict . Put.runPut
