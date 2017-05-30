@@ -3,6 +3,7 @@ module Network.ABCI.Internal.WireSpec (main, spec) where
 
 import           Network.ABCI.Internal.Wire
 
+import           Control.Monad (replicateM)
 import qualified Data.Binary.Put as Put
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
@@ -37,8 +38,11 @@ spec = do
     it "works for 8 byte length bytestrings" $ property $ \word ->
       beWordFromBytes (runPut (Put.putWord64be word)) == Right word
 
-    it "fails for bytestring larger than 8 bytes" $ do
-      beWordFromBytes (BS.pack (take 10 (repeat 0))) `shouldSatisfy` isLeft
+    it "fails for bytestring larger than 8 bytes" $
+      let arbitraryBsLenGt8 =
+            choose (9,2000) >>= randomBytestringOfLength
+      in forAll arbitraryBsLenGt8 $ \bs ->
+        beWordFromBytes bs `shouldSatisfy` isLeft
 
   describe "decodeLengthPrefixC / encodeLengthPrefixC" $ do
 
@@ -115,6 +119,11 @@ chunksProducer bs _ | BS.null bs = return ()
 chunksProducer bs (c:cs) = yield chunk >> chunksProducer rest cs
   where (chunk, rest) = BS.splitAt (getNonNegative c) bs
 
+randomBytestringOfLength :: Int -> Gen BS.ByteString
+randomBytestringOfLength len = BS.pack <$> replicateM len arbitrary
+
+runIdConduit :: Sink () Identity a -> a
+runIdConduit = runIdentity . runConduit
 
 runPut :: Put.Put -> BS.ByteString
 runPut = LBS.toStrict . Put.runPut
