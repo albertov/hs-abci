@@ -67,37 +67,12 @@ spec = do
             step (Right acc) (Right s)  = Right (acc <> s)
             step (Right _)   (Left err) = Left err
             step (Left err)  _          = Left err
-        in runIdentity (runConduit conduit) == Right bytes
-
-  describe "encodeLengthPrefixC" $ do
-    it "only uses 1 byte to encode lengths < 2^8" $
-      pendingWith "needs to be implemented"
-
-    it "it used up to 2 bytes to encode lengths < 2^16" $
-      pendingWith "needs to be implemented"
-
-    it "uses up to 3 bytes to encode lengths < 2^24" $
-      pendingWith "needs to be implemented"
-
-    it "uses up to 4 bytes to encode lengths < 2^32" $
-      pendingWith "needs to be implemented"
-
-    it "uses up to 5 bytes to encode lengths < 2^40" $
-      pendingWith "needs to be implemented"
-
-    it "uses up to 6 bytes to encode lengths < 2^48" $
-      pendingWith "needs to be implemented"
-
-    it "uses up to 7 bytes to encode lengths < 2^56" $
-      pendingWith "needs to be implemented"
-
-    it "uses 8 bytes to encode lengths >= 2^56" $
-      pendingWith "needs to be implemented"
-
+        in runIdConduit conduit == Right bytes
 
   describe "decodeLengthPrefixC" $ do
 
-    it "fails gracefully when given a negative length length varlen encoded string" $ pendingWith "write this test"
+    it "fails gracefully when given a negative length length varlen encoded string" $
+      pendingWith "write this test"
 
     it "fails gracefully when given a string largen than maxMessageLen" $
       pendingWith "write this test"
