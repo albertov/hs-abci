@@ -64,7 +64,7 @@ spec = do
 
   describe "decodeLengthPrefixC" $ do
 
-    it "fails gracefully when given a string largen than maxMessageLen" $
+    it "fails gracefully when given a string larger than maxMessageLen" $
       let ginormousSizeVarLen = 8 `BS.cons` runPut (Put.putWord64be maxBound)
           conduit = yield ginormousSizeVarLen
                 =$= decodeLengthPrefixC

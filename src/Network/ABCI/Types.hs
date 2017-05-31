@@ -119,7 +119,6 @@ data Request (t :: MsgType) where
     { requestCheckTx'tx :: !ByteString
     } -> Request CheckTx
 
-
   RequestCommit :: Request Commit
 
   RequestQuery  ::
@@ -127,7 +126,8 @@ data Request (t :: MsgType) where
     , requestQuery'path   :: !Text
     , requestQuery'height :: !Word64
     , requestQuery'prove  :: !Bool
-    }                                     -> Request Query
+    } -> Request Query
+
   RequestInitChain ::
     { requestInitChain'validators :: ![Proto.Validator]
     } -> Request InitChain
@@ -260,26 +260,15 @@ withProtoRequest
   -> (forall (t :: MsgType). Maybe (Request t) -> a)
   -> a
 withProtoRequest r f
-  | Just (Proto.RequestEcho msg) <- r ^. Proto.maybe'echo
-  = f (Just (RequestEcho msg))
-  | Just (Proto.RequestFlush) <- r ^. Proto.maybe'flush
-  = f (Just RequestFlush)
-  | Just (Proto.RequestInfo) <- r ^. Proto.maybe'info
-  = f (Just RequestInfo)
-  | Just (Proto.RequestSetOption k v) <- r ^. Proto.maybe'setOption
-  = f (Just (RequestSetOption k v))
-  | Just (Proto.RequestDeliverTx tx) <- r ^. Proto.maybe'deliverTx
-  = f (Just (RequestDeliverTx tx))
-  | Just (Proto.RequestCheckTx tx) <- r ^. Proto.maybe'checkTx
-  = f (Just (RequestCheckTx tx))
-  | Just Proto.RequestCommit <- r ^. Proto.maybe'commit
-  = f (Just RequestCommit)
-  | Just (Proto.RequestQuery d p h pr) <- r ^. Proto.maybe'query
-  = f (Just (RequestQuery d p h pr))
-  | Just (Proto.RequestInitChain vs) <- r ^. Proto.maybe'initChain
-  = f (Just (RequestInitChain vs))
-  | Just (Proto.RequestBeginBlock ah hdr) <- r ^. Proto.maybe'beginBlock
-  = f (Just (RequestBeginBlock ah hdr))
-  | Just (Proto.RequestEndBlock h) <- r ^. Proto.maybe'endBlock
-  = f (Just (RequestEndBlock h))
-  | otherwise = f Nothing
+  | Just (Proto.RequestEcho msg)          <- r^.Proto.maybe'echo       = f (Just (RequestEcho msg))
+  | Just (Proto.RequestFlush)             <- r^.Proto.maybe'flush      = f (Just RequestFlush)
+  | Just (Proto.RequestInfo)              <- r^.Proto.maybe'info       = f (Just RequestInfo)
+  | Just (Proto.RequestSetOption k v)     <- r^.Proto.maybe'setOption  = f (Just (RequestSetOption k v))
+  | Just (Proto.RequestDeliverTx tx)      <- r^.Proto.maybe'deliverTx  = f (Just (RequestDeliverTx tx))
+  | Just (Proto.RequestCheckTx tx)        <- r^.Proto.maybe'checkTx    = f (Just (RequestCheckTx tx))
+  | Just (Proto.RequestCommit)            <- r^.Proto.maybe'commit     = f (Just RequestCommit)
+  | Just (Proto.RequestQuery d p h pr)    <- r^.Proto.maybe'query      = f (Just (RequestQuery d p h pr))
+  | Just (Proto.RequestInitChain vs)      <- r^.Proto.maybe'initChain  = f (Just (RequestInitChain vs))
+  | Just (Proto.RequestBeginBlock ah hdr) <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock ah hdr))
+  | Just (Proto.RequestEndBlock h)        <- r^.Proto.maybe'endBlock   = f (Just (RequestEndBlock h))
+  | otherwise                                                          = f Nothing
