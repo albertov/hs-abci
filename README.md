@@ -3,6 +3,8 @@
 Build blockchain applications in Haskell for
 [Tendermint](https://tendermint.com/)
 
+[![Build Status](https://travis-ci.org/albertov/hs-abci.svg?branch=master)](https://travis-ci.org/albertov/hs-abci)
+
 ## Pre-Install
 
 1. Clone this repository
