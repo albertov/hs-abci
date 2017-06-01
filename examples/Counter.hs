@@ -8,6 +8,8 @@ module Counter (main) where
 import           Network.ABCI
 import           Network.ABCI.Internal.Wire (beWordFromBytes)
 import           Control.Monad (when)
+import           Control.Monad.IO.Class (MonadIO (liftIO))
+import           Control.Monad.Trans.Resource (allocate)
 import qualified Control.Concurrent.STM as STM
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -42,10 +44,18 @@ main = do
         STM.modifyTVar' stateVar (\s -> s { csTxCount = csTxCount s + 1 })
 
 
-  serveApp $ \sockAddr -> do
-    putStrLn ("Received connection from " ++ show sockAddr)
 
-    -- You can do some per-connection initialization here if needed...
+  serveApp $ \sockAddr -> do
+
+    _ <- allocate
+      -- The App's monad is wrapped with a 'ResourceT' so we can
+      -- manage per-connection resources safely.
+      -- See the readme at https://hackage.haskell.org/package/resourcet
+      -- for more information.
+      -- That means we can call 'allocate' here to implement a simple
+      -- logger for connection creation and destruction.
+      (putStrLn ("Received connection from " ++ show sockAddr))
+      (const (putStrLn ("Dropped connection from " ++ show sockAddr)))
 
     return $ App $ \case
       RequestEcho msg -> return (ResponseEcho msg)
@@ -53,14 +63,14 @@ main = do
       RequestFlush -> return def
 
       RequestInfo -> do
-        CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
+        CounterState{csHashCount=hs, csTxCount= txs} <- readTVarIO stateVar
         return def
           { responseInfo'data =
               fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
           }
 
       RequestSetOption key value -> do
-        when (key=="serial" && value=="on") (STM.atomically enableSerial)
+        when (key=="serial" && value=="on") (atomically enableSerial)
         return def
 
       RequestDeliverTx txData -> do
@@ -72,13 +82,13 @@ main = do
         return (ResponseCheckTx code "" log')
 
       RequestCommit -> do
-        STM.atomically incHashCount
-        CounterState{csTxCount} <- STM.readTVarIO stateVar
+        atomically incHashCount
+        CounterState{csTxCount} <- readTVarIO stateVar
         let data' = if csTxCount == 0 then "" else serializeBe csTxCount
         return (ResponseCommit OK data' "")
 
       RequestQuery{requestQuery'path=path} -> do
-        state <- STM.readTVarIO stateVar
+        state <- readTVarIO stateVar
         let retVal v = return def { responseQuery'value = fromString (show v) }
             retErr msg = return def { responseQuery'log = fromString msg }
         case path of
@@ -89,6 +99,11 @@ main = do
 
       _ -> return (ResponseException "Not implemented")
 
+atomically :: MonadIO m => STM.STM a -> m a
+atomically = liftIO . STM.atomically
+
+readTVarIO :: MonadIO m => STM.TVar a -> m a
+readTVarIO = liftIO . STM.readTVarIO
 
 serializeBe :: Int64 -> ByteString
 serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
@@ -97,8 +112,8 @@ processTransaction
   :: STM.TVar CounterState
   -> ByteString
   -> (STM.STM ())
-  -> IO (CodeType, Text)
-processTransaction stateVar txData increment = STM.atomically $ do
+  -> ResourceT IO (CodeType, Text)
+processTransaction stateVar txData increment = atomically $ do
   CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
   case parseTxValue txData of
     Right txValue -> do

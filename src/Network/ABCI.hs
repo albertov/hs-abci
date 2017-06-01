@@ -6,6 +6,7 @@ module Network.ABCI (
 , serveAppWith
 , defaultSettings
 -- * Re-exports
+, ResourceT
 , serverSettings
 , module ReExport
 ) where
@@ -22,6 +23,7 @@ import           Network.ABCI.Types as ReExport hiding (
 import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO)
 import           Control.Monad.Trans.Control (MonadBaseControl)
+import           Control.Monad.Trans.Resource (ResourceT, runResourceT)
 import           Data.Conduit (Conduit, runConduit, (=$=))
 import qualified Data.Conduit.List as CL
 import           Data.Conduit.Network ( AppData
@@ -46,15 +48,16 @@ defaultSettings = serverSettings 46658 "127.0.0.1"
 -- | Serve an ABCI application with custom 'ServerSettings'
 serveAppWith
   :: (MonadIO m, MonadBaseControl IO m)
-  => ServerSettings -> (SockAddr -> m (App m)) -> m ()
-serveAppWith cfg mkApp = runGeneralTCPServer cfg $ \appData -> do
-  app <- mkApp (appSockAddr appData)
-  runConduit (setupConduit app appData)
+  => ServerSettings -> (SockAddr -> ResourceT m (App (ResourceT m))) -> m ()
+serveAppWith cfg mkApp = runGeneralTCPServer cfg $
+  \appData -> runResourceT $ do
+    app <- mkApp (appSockAddr appData)
+    runConduit (setupConduit app appData)
 
 -- | Serve an ABCI application with default 'ServerSettings'
 serveApp
   :: (MonadIO m, MonadBaseControl IO m)
-  => (SockAddr -> m (App m)) -> m ()
+  => (SockAddr -> ResourceT m (App (ResourceT m))) -> m ()
 serveApp = serveAppWith defaultSettings
 
 -- | Sets up the application wire pipeline.
