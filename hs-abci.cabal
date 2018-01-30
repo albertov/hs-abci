@@ -1,5 +1,5 @@
 name:                hs-abci
-version:             0.1.0.0
+version:             0.1.1.0
 synopsis:            Tendermint's ABCI server library
 description:         TBD
 homepage:            https://github.com/albertov/hs-abci#readme
