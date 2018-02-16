@@ -13,6 +13,15 @@ module Network.ABCI.Types (
   Request (..)
 , Response (..)
 
+-- * Code types
+
+, CodeType(..)
+, codeTypeOK
+, codeTypeEncodingError
+, codeTypeBadNonce
+, codeTypeUnauthorized
+, codeTypeBadOption
+
 -- * An ABCI application type
 
 , App (..)
@@ -45,20 +54,19 @@ module Network.ABCI.Types (
 -- * Protobuf safe types re-exports
 
 , Proto.BlockID (..)
-, Proto.CodeType (..)
+, Proto.ConsensusParams
 , Proto.Header (..)
 , Proto.PartSetHeader (..)
 , Proto.Validator (..)
-
 ) where
 
 import qualified Proto.Network.ABCI.Types as Proto
 
 import           Data.ByteString (ByteString)
 import           Data.Default (Default(def))
-import           Data.Int (Int64)
+import           Data.Int (Int64, Int32)
 import           Data.Text (Text)
-import           Data.Word (Word64)
+import           Data.Word (Word32)
 import           Lens.Micro
 
 -- | An 'App' is a monadic function from 'Request' to 'Response'.
@@ -104,7 +112,9 @@ data Request (t :: MsgType) where
 
   RequestFlush :: Request Flush
 
-  RequestInfo :: Request Info
+  RequestInfo :: {
+    requestInfo'version :: !Text
+  } -> Request Info
 
   RequestSetOption  ::
     { requestSetOption'key   :: !Text
@@ -124,7 +134,7 @@ data Request (t :: MsgType) where
   RequestQuery  ::
     { requestQuery'data   :: !ByteString
     , requestQuery'path   :: !Text
-    , requestQuery'height :: !Word64
+    , requestQuery'height :: !Int64
     , requestQuery'prove  :: !Bool
     } -> Request Query
 
@@ -135,10 +145,12 @@ data Request (t :: MsgType) where
   RequestBeginBlock ::
     { requestInitBlock'hash   :: !ByteString
     , requestInitBlock'header :: !(Maybe Proto.Header)
+    , requestInitBlock'absent_validators :: ![Int32]
+    , requestInitBlock'byzantine_validators :: ![Proto.Evidence]
     } -> Request BeginBlock
 
   RequestEndBlock ::
-    { requestEndBlock'height :: !Word64
+    { requestEndBlock'height :: !Int64
     } -> Request EndBlock
 
 deriving instance Show (Request t)
@@ -159,39 +171,43 @@ data Response (t :: MsgType) where
   ResponseInfo ::
     { responseInfo'data             :: !Text
     , responseInfo'version          :: !Text
-    , responseInfo'lastBlockHeight  :: !Word64
+    , responseInfo'lastBlockHeight  :: !Int64
     , responseInfo'lastBlockAppHash :: !ByteString
     } -> Response Info
 
   ResponseSetOption ::
-    { responseSetOption'log :: !Text
+    { responseSetOption'code :: !CodeType
+    , responseSetOption'log  :: !Text
     } -> Response SetOption
 
   ResponseDeliverTx ::
-    { responseDeliverTx'code :: !Proto.CodeType
+    { responseDeliverTx'code :: !CodeType
     , responseDeliverTx'data :: !ByteString
     , responseDeliverTx'log  :: !Text
+    , responseDeliverTx'tags :: ![Proto.KVPair]
     } -> Response DeliverTx
 
   ResponseCheckTx ::
-    { responseCheckTx'code :: !Proto.CodeType
+    { responseCheckTx'code :: !CodeType
     , responseCheckTx'data :: !ByteString
     , responseCheckTx'log  :: !Text
+    , responseCheckTx'gas  :: !Int64
+    , responseCheckTx'fee  :: !Int64
     } -> Response CheckTx
 
   ResponseCommit ::
-    { responseCommit'code :: !Proto.CodeType
+    { responseCommit'code :: !CodeType
     , responseCommit'data :: !ByteString
     , responseCommit'log  :: !Text
     } -> Response Commit
 
   ResponseQuery ::
-    { responseQuery'code   :: !Proto.CodeType
+    { responseQuery'code   :: !CodeType
     , responseQuery'index  :: !Int64
     , responseQuery'key    :: !ByteString
     , responseQuery'value  :: !ByteString
     , responseQuery'proof  :: !ByteString
-    , responseQuery'height :: !Word64
+    , responseQuery'height :: !Int64
     , responseQuery'log    :: !Text
     } -> Response Query
 
@@ -201,6 +217,7 @@ data Response (t :: MsgType) where
 
   ResponseEndBlock ::
     { responseEndBlock'diffs :: ![Proto.Validator]
+    , responseEndBlock'consensus :: !(Maybe Proto.ConsensusParams)
     } -> Response EndBlock
 
 deriving instance Show (Response t)
@@ -212,11 +229,48 @@ instance Default (Response Info) where
   def = ResponseInfo "" "" 0 ""
 
 instance Default (Response SetOption) where
-  def = ResponseSetOption ""
+  def = ResponseSetOption def ""
 
 instance Default (Response Query) where
-  def = ResponseQuery def 0 "" "" "" 0 ""
+  def = ResponseQuery def def "" "" "" 0 ""
 
+instance Default (Response InitChain) where
+  def = ResponseInitChain
+
+instance Default (Response BeginBlock) where
+  def = ResponseBeginBlock
+
+instance Default (Response EndBlock) where
+  def = ResponseEndBlock [] Nothing
+
+------------------------------------
+-- code types
+
+newtype CodeType = CodeType { unCodeType :: Word32
+  } deriving (Show, Eq, Ord)
+
+instance Default CodeType where
+  def = CodeType 0
+
+
+codeTypeOK, codeTypeEncodingError, codeTypeBadNonce, codeTypeUnauthorized, codeTypeBadOption :: CodeType
+
+codeTypeOK            = CodeType 0
+codeTypeEncodingError = CodeType 1
+codeTypeBadNonce      = CodeType 2
+codeTypeUnauthorized  = CodeType 3
+codeTypeBadOption     = CodeType 101
+
+
+{- from file: https://github.com/tendermint/abci/blob/master/example/code/code.go
+  CodeTypeOK            uint32 = 0
+  CodeTypeEncodingError uint32 = 1
+  CodeTypeBadNonce      uint32 = 2
+  CodeTypeUnauthorized  uint32 = 3
+  CodeTypeBadOption uint32 = 101
+-}
+
+------------------------------------
 
 -- | Translates type-safe 'Response' GADT to the unsafe
 --   auto-generated 'Proto.Response'
@@ -229,22 +283,22 @@ toProtoResponse ResponseFlush =
   def & Proto.flush .~ Proto.ResponseFlush
 toProtoResponse (ResponseInfo d v h ah) =
   def & Proto.info .~ Proto.ResponseInfo d v h ah
-toProtoResponse (ResponseSetOption log') =
-  def & Proto.setOption .~ Proto.ResponseSetOption log'
-toProtoResponse (ResponseDeliverTx code data'' log') =
-  def & Proto.deliverTx .~ Proto.ResponseDeliverTx code data'' log'
-toProtoResponse (ResponseCheckTx code data'' log') =
-  def & Proto.checkTx .~ Proto.ResponseCheckTx code data'' log'
-toProtoResponse (ResponseCommit code data'' log') =
+toProtoResponse (ResponseSetOption (CodeType code') log') =
+  def & Proto.setOption .~ Proto.ResponseSetOption code' log'
+toProtoResponse (ResponseDeliverTx (CodeType code) data'' log' tags') =
+  def & Proto.deliverTx .~ Proto.ResponseDeliverTx code data'' log' tags'
+toProtoResponse (ResponseCheckTx (CodeType code) data'' log' gas' fee') =
+  def & Proto.checkTx .~ Proto.ResponseCheckTx code data'' log' gas' fee'
+toProtoResponse (ResponseCommit (CodeType code) data'' log') =
   def & Proto.commit .~ Proto.ResponseCommit code data'' log'
-toProtoResponse (ResponseQuery c i k v p h l) =
+toProtoResponse (ResponseQuery (CodeType c) i k v p h l) =
   def & Proto.query .~ Proto.ResponseQuery c i k v p h l
 toProtoResponse ResponseInitChain =
   def & Proto.initChain .~ Proto.ResponseInitChain
 toProtoResponse ResponseBeginBlock =
   def & Proto.beginBlock .~ Proto.ResponseBeginBlock
-toProtoResponse (ResponseEndBlock vs) =
-  def & Proto.endBlock .~ Proto.ResponseEndBlock vs
+toProtoResponse (ResponseEndBlock vs consensus) =
+  def & Proto.endBlock .~ Proto.ResponseEndBlock vs consensus
 
 
 -- | Translates the unsafe auto-generated 'Proto.Request' to a type-safe
@@ -262,13 +316,16 @@ withProtoRequest
 withProtoRequest r f
   | Just (Proto.RequestEcho msg)          <- r^.Proto.maybe'echo       = f (Just (RequestEcho msg))
   | Just (Proto.RequestFlush)             <- r^.Proto.maybe'flush      = f (Just RequestFlush)
-  | Just (Proto.RequestInfo)              <- r^.Proto.maybe'info       = f (Just RequestInfo)
+  | Just (Proto.RequestInfo version)      <- r^.Proto.maybe'info       = f (Just (RequestInfo version))
   | Just (Proto.RequestSetOption k v)     <- r^.Proto.maybe'setOption  = f (Just (RequestSetOption k v))
   | Just (Proto.RequestDeliverTx tx)      <- r^.Proto.maybe'deliverTx  = f (Just (RequestDeliverTx tx))
   | Just (Proto.RequestCheckTx tx)        <- r^.Proto.maybe'checkTx    = f (Just (RequestCheckTx tx))
   | Just (Proto.RequestCommit)            <- r^.Proto.maybe'commit     = f (Just RequestCommit)
   | Just (Proto.RequestQuery d p h pr)    <- r^.Proto.maybe'query      = f (Just (RequestQuery d p h pr))
   | Just (Proto.RequestInitChain vs)      <- r^.Proto.maybe'initChain  = f (Just (RequestInitChain vs))
-  | Just (Proto.RequestBeginBlock ah hdr) <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock ah hdr))
+  | Just (Proto.RequestBeginBlock ah hdr av bv) <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock ah hdr av bv))
   | Just (Proto.RequestEndBlock h)        <- r^.Proto.maybe'endBlock   = f (Just (RequestEndBlock h))
   | otherwise                                                          = f Nothing
+
+
+

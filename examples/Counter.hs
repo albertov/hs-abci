@@ -18,6 +18,7 @@ import           Data.Hex (unhex)
 import           Data.String (fromString)
 import           Data.Text (Text)
 import           Text.Printf (printf)
+import           System.Environment
 
 data CounterState = CounterState
   { csSerial    :: !Bool
@@ -25,12 +26,12 @@ data CounterState = CounterState
   , csHashCount :: !Int64
   } deriving Show
 
-initialState :: CounterState
-initialState = CounterState False 0 0
+initialState :: Bool -> CounterState
+initialState isSerial = CounterState isSerial 0 0
 
 main :: IO ()
 main = do
-  stateVar <- STM.newTVarIO initialState
+  stateVar <- STM.newTVarIO . initialState =<< hasSerialArg
 
   let enableSerial =
         STM.modifyTVar' stateVar (\s -> s { csSerial = True })
@@ -52,11 +53,12 @@ main = do
 
       RequestFlush -> return def
 
-      RequestInfo -> do
+      RequestInfo version -> do
         CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
         return def
           { responseInfo'data =
               fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
+          , responseInfo'version = version
           }
 
       RequestSetOption key value -> do
@@ -65,17 +67,17 @@ main = do
 
       RequestDeliverTx txData -> do
         (code, log') <- processTransaction stateVar txData incTxCount
-        return (ResponseDeliverTx code "" log')
+        return (ResponseDeliverTx code "" log' [])
 
       RequestCheckTx txData -> do
         (code, log') <- processTransaction stateVar txData (return ())
-        return (ResponseCheckTx code "" log')
+        return (ResponseCheckTx code "" log' 0 0)
 
       RequestCommit -> do
         STM.atomically incHashCount
         CounterState{csTxCount} <- STM.readTVarIO stateVar
         let data' = if csTxCount == 0 then "" else serializeBe csTxCount
-        return (ResponseCommit OK data' "")
+        return (ResponseCommit codeTypeOK data' "")
 
       RequestQuery{requestQuery'path=path} -> do
         state <- STM.readTVarIO stateVar
@@ -87,8 +89,9 @@ main = do
           p  -> retErr $ printf
                   "Invalid query path. Expected hash or tx, got %s" (show p)
 
-      _ -> return (ResponseException "Not implemented")
-
+      RequestInitChain _ -> return def
+      RequestBeginBlock _ _ _ _ -> return def
+      RequestEndBlock _ -> return def
 
 serializeBe :: Int64 -> ByteString
 serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
@@ -99,22 +102,24 @@ processTransaction
   -> (STM.STM ())
   -> IO (CodeType, Text)
 processTransaction stateVar txData increment = STM.atomically $ do
-  CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
-  case parseTxValue txData of
-    Right txValue -> do
-      if (csSerial && txValue /= csTxCount)
-        then return
-          ( BadNonce
-          , fromString
-             (printf "Invalid nonce. Expected %d, got %d" csTxCount txValue)
-          )
-        else increment >> return (OK, "")
-    Left err ->
-      return (EncodingError, fromString err)
-
+    CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
+    case parseTxValue txData of
+      Right txValue -> do
+        if (csSerial && txValue /= csTxCount)
+          then return
+            ( codeTypeBadNonce
+            , fromString
+               (printf "Invalid nonce. Expected %d, got %d" csTxCount txValue)
+            )
+          else increment >> return (codeTypeOK, "")
+      Left err ->
+        return (codeTypeEncodingError, fromString err)
 
 parseTxValue :: ByteString -> Either String Int64
 parseTxValue s =
   case maybe (Just s) unhex (BS.stripPrefix "0x" s) of
     Just uh -> fromIntegral <$> beWordFromBytes uh
     Nothing -> Left ("Invalid hex string: " ++ show s)
+
+hasSerialArg :: IO Bool
+hasSerialArg = fmap (any (== "--serial")) getArgs
