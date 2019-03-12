@@ -22,7 +22,7 @@ import           Network.ABCI.Types as ReExport hiding (
 import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO)
 import           Control.Monad.Trans.Control (MonadBaseControl)
-import           Data.Conduit (Conduit, runConduit, (=$=))
+import           Data.Conduit (ConduitT, runConduit, (.|))
 import qualified Data.Conduit.List as CL
 import           Data.Conduit.Network ( AppData
                                       , ServerSettings
@@ -36,8 +36,8 @@ import           Data.Monoid ((<>))
 import qualified Data.ProtoLens.Encoding as PL
 import           Data.String (fromString)
 import           Data.Text (Text)
-import           Lens.Micro
 import           Network.Socket (SockAddr)
+import           UnliftIO (MonadUnliftIO)
 
 -- | Default ABCI app network settings.
 defaultSettings :: ServerSettings
@@ -45,7 +45,7 @@ defaultSettings = serverSettings 46658 "127.0.0.1"
 
 -- | Serve an ABCI application with custom 'ServerSettings'
 serveAppWith
-  :: (MonadIO m, MonadBaseControl IO m)
+  :: (MonadIO m, MonadBaseControl IO m, MonadUnliftIO m)
   => ServerSettings -> (SockAddr -> m (App m)) -> m ()
 serveAppWith cfg mkApp = runGeneralTCPServer cfg $ \appData -> do
   app <- mkApp (appSockAddr appData)
@@ -53,20 +53,20 @@ serveAppWith cfg mkApp = runGeneralTCPServer cfg $ \appData -> do
 
 -- | Serve an ABCI application with default 'ServerSettings'
 serveApp
-  :: (MonadIO m, MonadBaseControl IO m)
+  :: (MonadIO m, MonadBaseControl IO m, MonadUnliftIO m)
   => (SockAddr -> m (App m)) -> m ()
 serveApp = serveAppWith defaultSettings
 
 -- | Sets up the application wire pipeline.
-setupConduit :: MonadIO m => App m -> AppData -> Conduit i m o
+setupConduit :: MonadIO m => App m -> AppData -> ConduitT i o m ()
 setupConduit app appData =
-      appSource appData
-  =$= Wire.decodeLengthPrefixC
-  =$= CL.map (join . fmap PL.decodeMessage)
-  =$= CL.mapM (respondWith app)
-  =$= CL.map PL.encodeMessage
-  =$= Wire.encodeLengthPrefixC
-  =$= appSink appData
+     appSource appData
+  .| Wire.decodeLengthPrefixC
+  .| CL.map (join . fmap PL.decodeMessage)
+  .| CL.mapM (respondWith app)
+  .| CL.map PL.encodeMessage
+  .| Wire.encodeLengthPrefixC
+  .| appSink appData
 
 
 -- | Wraps the ABCI application so it doesn't have to deal with the
@@ -81,5 +81,4 @@ respondWith (App app) (Right req) =
 
 -- | "Throws" an ABCI raw 'ResponseException'
 respondErr :: Monad m => Text -> m ABCI.Response
-respondErr err =
-  return (def & ABCI.exception .~ ABCI.ResponseException err)
+respondErr err = return (toProtoResponse (ResponseException err))
