@@ -1,5 +1,11 @@
-resolver: lts-10.3
+resolver: lts-12.7
 packages:
 - '.'
+extra-deps:
+  - proto-lens-runtime-0.5.0.0
+  - proto-lens-setup-0.4.0.2
+  - lens-labels-0.3.0.1
+  - proto-lens-0.5.0.0
+  - proto-lens-protoc-0.5.0.0
 explicit-setup-deps:
   hs-abci: true

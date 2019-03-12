@@ -53,21 +53,25 @@ module Network.ABCI.Types (
 , def
 -- * Protobuf safe types re-exports
 
-, Proto.BlockID (..)
+, Proto.BlockID ()
 , Proto.ConsensusParams
-, Proto.Header (..)
-, Proto.PartSetHeader (..)
-, Proto.Validator (..)
+, Proto.Header ()
+, Proto.PartSetHeader ()
+, Proto.Validator ()
 ) where
 
 import qualified Proto.Network.ABCI.Types as Proto
+import qualified Proto.Network.ABCI.Types_Fields as Proto
 
 import           Data.ByteString (ByteString)
 import           Data.Default (Default(def))
 import           Data.Int (Int64, Int32)
+import           Data.ProtoLens (defMessage)
+import           Data.ProtoLens.Prism ((#))
 import           Data.Text (Text)
 import           Data.Word (Word32)
 import           Lens.Micro
+
 
 -- | An 'App' is a monadic function from 'Request' to 'Response'.
 --   We tag both with the 'MsgType' to enforce at the type-level that
@@ -276,29 +280,49 @@ codeTypeBadOption     = CodeType 101
 --   auto-generated 'Proto.Response'
 toProtoResponse :: Response t -> Proto.Response
 toProtoResponse (ResponseException error') =
-  def & Proto.exception .~ Proto.ResponseException error'
+  defMessage & Proto.maybe'value ?~ Proto._Response'Exception # (defMessage & Proto.error .~ error')
 toProtoResponse (ResponseEcho msg) =
-  def & Proto.echo .~ Proto.ResponseEcho msg
+  defMessage & Proto.maybe'value ?~ Proto._Response'Echo # (defMessage & Proto.message .~ msg)
 toProtoResponse ResponseFlush =
-  def & Proto.flush .~ Proto.ResponseFlush
+  defMessage & Proto.maybe'value ?~ Proto._Response'Flush # defMessage
 toProtoResponse (ResponseInfo d v h ah) =
-  def & Proto.info .~ Proto.ResponseInfo d v h ah
+  defMessage & Proto.maybe'value ?~ Proto._Response'Info # (defMessage & Proto.data' .~ d
+                                                                       & Proto.version .~ v
+                                                                       & Proto.lastBlockHeight .~ h
+                                                                       & Proto.lastBlockAppHash .~ ah)
 toProtoResponse (ResponseSetOption (CodeType code') log') =
-  def & Proto.setOption .~ Proto.ResponseSetOption code' log'
+  defMessage & Proto.maybe'value ?~ Proto._Response'SetOption # (defMessage & Proto.code .~ code'
+                                                                            & Proto.log .~ log')
 toProtoResponse (ResponseDeliverTx (CodeType code) data'' log' tags') =
-  def & Proto.deliverTx .~ Proto.ResponseDeliverTx code data'' log' tags'
+  defMessage & Proto.maybe'value ?~ Proto._Response'DeliverTx # (defMessage & Proto.code .~ code
+                                                                            & Proto.data' .~ data''
+                                                                            & Proto.log .~ log'
+                                                                            & Proto.tags .~ tags')
 toProtoResponse (ResponseCheckTx (CodeType code) data'' log' gas' fee') =
-  def & Proto.checkTx .~ Proto.ResponseCheckTx code data'' log' gas' fee'
+  defMessage & Proto.maybe'value ?~ Proto._Response'CheckTx # (defMessage & Proto.code .~ code
+                                                                          & Proto.data' .~ data''
+                                                                          & Proto.log .~ log'
+                                                                          & Proto.gas .~ gas'
+                                                                          & Proto.fee .~ fee')
 toProtoResponse (ResponseCommit (CodeType code) data'' log') =
-  def & Proto.commit .~ Proto.ResponseCommit code data'' log'
+  defMessage & Proto.maybe'value ?~ Proto._Response'Commit # (defMessage & Proto.code .~ code
+                                                                         & Proto.data' .~ data''
+                                                                         & Proto.log .~ log')
 toProtoResponse (ResponseQuery (CodeType c) i k v p h l) =
-  def & Proto.query .~ Proto.ResponseQuery c i k v p h l
+  defMessage & Proto.maybe'value ?~ Proto._Response'Query # (defMessage & Proto.code .~ c
+                                                                        & Proto.index .~ i
+                                                                        & Proto.key .~ k
+                                                                        & Proto.value .~ v
+                                                                        & Proto.proof .~ p
+                                                                        & Proto.height .~ h
+                                                                        & Proto.log .~ l)
 toProtoResponse ResponseInitChain =
-  def & Proto.initChain .~ Proto.ResponseInitChain
+  defMessage & Proto.maybe'value ?~ Proto._Response'InitChain # defMessage
 toProtoResponse ResponseBeginBlock =
-  def & Proto.beginBlock .~ Proto.ResponseBeginBlock
+  defMessage & Proto.maybe'value ?~ Proto._Response'BeginBlock # defMessage
 toProtoResponse (ResponseEndBlock vs consensus) =
-  def & Proto.endBlock .~ Proto.ResponseEndBlock vs consensus
+  defMessage & Proto.maybe'value ?~ Proto._Response'EndBlock # (defMessage & Proto.validatorUpdates .~ vs
+                                                                           & Proto.maybe'consensusParamUpdates .~ consensus)
 
 
 -- | Translates the unsafe auto-generated 'Proto.Request' to a type-safe
@@ -314,18 +338,18 @@ withProtoRequest
   -> (forall (t :: MsgType). Maybe (Request t) -> a)
   -> a
 withProtoRequest r f
-  | Just (Proto.RequestEcho msg)          <- r^.Proto.maybe'echo       = f (Just (RequestEcho msg))
-  | Just (Proto.RequestFlush)             <- r^.Proto.maybe'flush      = f (Just RequestFlush)
-  | Just (Proto.RequestInfo version)      <- r^.Proto.maybe'info       = f (Just (RequestInfo version))
-  | Just (Proto.RequestSetOption k v)     <- r^.Proto.maybe'setOption  = f (Just (RequestSetOption k v))
-  | Just (Proto.RequestDeliverTx tx)      <- r^.Proto.maybe'deliverTx  = f (Just (RequestDeliverTx tx))
-  | Just (Proto.RequestCheckTx tx)        <- r^.Proto.maybe'checkTx    = f (Just (RequestCheckTx tx))
-  | Just (Proto.RequestCommit)            <- r^.Proto.maybe'commit     = f (Just RequestCommit)
-  | Just (Proto.RequestQuery d p h pr)    <- r^.Proto.maybe'query      = f (Just (RequestQuery d p h pr))
-  | Just (Proto.RequestInitChain vs)      <- r^.Proto.maybe'initChain  = f (Just (RequestInitChain vs))
-  | Just (Proto.RequestBeginBlock ah hdr av bv) <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock ah hdr av bv))
-  | Just (Proto.RequestEndBlock h)        <- r^.Proto.maybe'endBlock   = f (Just (RequestEndBlock h))
-  | otherwise                                                          = f Nothing
+  | Just echo  <- r^.Proto.maybe'echo            = f (Just (RequestEcho $ echo ^. Proto.message))
+  | Just _ <- r^.Proto.maybe'flush           = f (Just RequestFlush)
+  | Just info  <- r^.Proto.maybe'info            = f (Just (RequestInfo $ info ^. Proto.version))
+  | Just setOption <- r^.Proto.maybe'setOption   = f (Just (RequestSetOption (setOption ^. Proto.key) (setOption ^. Proto.value)))
+  | Just deliverTx <- r^.Proto.maybe'deliverTx   = f (Just (RequestDeliverTx $ deliverTx ^. Proto.tx))
+  | Just requestTx <- r^.Proto.maybe'checkTx     = f (Just (RequestCheckTx $ requestTx ^. Proto.tx))
+  | Just _ <- r^.Proto.maybe'commit         = f (Just RequestCommit)
+  | Just query <- r^.Proto.maybe'query           = f (Just (RequestQuery (query ^. Proto.data') (query ^. Proto.path) (query ^. Proto.height) (query ^. Proto.prove)))
+  | Just initChain <- r^.Proto.maybe'initChain   = f (Just (RequestInitChain $ initChain ^. Proto.validators))
+  | Just beginBlock <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock (beginBlock ^. Proto.hash) (beginBlock ^. Proto.maybe'header) (beginBlock ^. Proto.absentValidators) (beginBlock ^. Proto.byzantineValidators)))
+  | Just endBlock <- r^.Proto.maybe'endBlock     = f (Just (RequestEndBlock $ endBlock ^. Proto.height))
+  | otherwise                                    = f Nothing
 
 
 
