@@ -26,7 +26,7 @@ import qualified Data.Binary.Put as Put
 import           Data.Bits (shiftL)
 import qualified Data.ByteString as BS
 import           Data.ByteString.Lazy (toChunks)
-import           Data.Conduit (Conduit, awaitForever, await, yield)
+import           Data.Conduit (ConduitT, awaitForever, await, yield)
 import           Data.Monoid ((<>))
 import           Data.Word (Word64)
 import           Text.Printf (printf)
@@ -39,7 +39,7 @@ maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
 --   'ByteString's
 encodeLengthPrefixC
   :: Monad m
-  => Conduit BS.ByteString m BS.ByteString
+  => ConduitT BS.ByteString BS.ByteString m ()
 encodeLengthPrefixC = awaitForever $
   mapM yield . toChunks . Put.runPut . putLengthPrefixedByteString
 {-# INLINEABLE encodeLengthPrefixC #-}
@@ -49,7 +49,7 @@ encodeLengthPrefixC = awaitForever $
 --   of 'ByteString's
 decodeLengthPrefixC
   :: Monad m
-  => Conduit BS.ByteString m (Either String BS.ByteString)
+  => ConduitT BS.ByteString (Either String BS.ByteString) m ()
 decodeLengthPrefixC = go "" initialDecoder
   where
     go leftOver (Get.Done leftOver2 _ result) = do
