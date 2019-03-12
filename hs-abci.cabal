@@ -1,3 +1,5 @@
+cabal-version:       >=1.24
+
 name:                hs-abci
 version:             0.1.1.0
 synopsis:            Tendermint's ABCI server library
@@ -9,11 +11,14 @@ author:              Alberto Valverde González
 maintainer:          alberto@toscat.net
 copyright:           2017 Alberto Valverde González
 category:            Network
-build-type:          Simple
+build-type:          Custom
 extra-source-files:
     README.md
   , src/Network/ABCI/types.proto
-cabal-version:       >=1.10
+
+custom-setup
+  setup-depends: base, Cabal, proto-lens-protoc
+
 
 library
   hs-source-dirs:      src

@@ -1,2 +1,5 @@
-import Distribution.Simple
-main = defaultMain
+import Data.ProtoLens.Setup
+
+main :: IO ()
+main = defaultMainGeneratingProtos "src/Network/ABCI/"
+
