@@ -77,7 +77,7 @@ main = do
         STM.atomically incHashCount
         CounterState{csTxCount} <- STM.readTVarIO stateVar
         let data' = if csTxCount == 0 then "" else serializeBe csTxCount
-        return (ResponseCommit codeTypeOK data' "")
+        return (ResponseCommit data')
 
       RequestQuery{requestQuery'path=path} -> do
         state <- STM.readTVarIO stateVar
@@ -90,7 +90,7 @@ main = do
                   "Invalid query path. Expected hash or tx, got %s" (show p)
 
       RequestInitChain _ -> return def
-      RequestBeginBlock _ _ _ _ -> return def
+      RequestBeginBlock _ _ _ -> return def
       RequestEndBlock _ -> return def
 
 serializeBe :: Int64 -> ByteString

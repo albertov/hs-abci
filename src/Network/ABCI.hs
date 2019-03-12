@@ -10,7 +10,7 @@ module Network.ABCI (
 , module ReExport
 ) where
 
-import qualified Proto.Network.ABCI.Types as ABCI
+import qualified Proto.Types as ABCI
 import           Network.ABCI.Internal.Wire as Wire
 import           Network.ABCI.Types ( App(..)
                                     , withProtoRequest

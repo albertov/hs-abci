@@ -60,8 +60,10 @@ module Network.ABCI.Types (
 , Proto.Validator ()
 ) where
 
-import qualified Proto.Network.ABCI.Types as Proto
-import qualified Proto.Network.ABCI.Types_Fields as Proto
+import qualified Proto.Types as Proto
+import qualified Proto.Types_Fields as Proto
+import Proto.Vendored.Tendermint.Tendermint.Libs.Common.Types (KVPair)
+import Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle (Proof)
 
 import           Data.ByteString (ByteString)
 import           Data.Default (Default(def))
@@ -143,13 +145,13 @@ data Request (t :: MsgType) where
     } -> Request Query
 
   RequestInitChain ::
-    { requestInitChain'validators :: ![Proto.Validator]
+    { requestInitChain'validators :: ![Proto.ValidatorUpdate]
     } -> Request InitChain
 
   RequestBeginBlock ::
     { requestInitBlock'hash   :: !ByteString
     , requestInitBlock'header :: !(Maybe Proto.Header)
-    , requestInitBlock'absent_validators :: ![Int32]
+   -- , requestInitBlock'absent_validators :: ![Int32]
     , requestInitBlock'byzantine_validators :: ![Proto.Evidence]
     } -> Request BeginBlock
 
@@ -188,7 +190,7 @@ data Response (t :: MsgType) where
     { responseDeliverTx'code :: !CodeType
     , responseDeliverTx'data :: !ByteString
     , responseDeliverTx'log  :: !Text
-    , responseDeliverTx'tags :: ![Proto.KVPair]
+    , responseDeliverTx'tags :: ![KVPair]
     } -> Response DeliverTx
 
   ResponseCheckTx ::
@@ -200,9 +202,7 @@ data Response (t :: MsgType) where
     } -> Response CheckTx
 
   ResponseCommit ::
-    { responseCommit'code :: !CodeType
-    , responseCommit'data :: !ByteString
-    , responseCommit'log  :: !Text
+    { responseCommit'data :: !ByteString
     } -> Response Commit
 
   ResponseQuery ::
@@ -210,7 +210,7 @@ data Response (t :: MsgType) where
     , responseQuery'index  :: !Int64
     , responseQuery'key    :: !ByteString
     , responseQuery'value  :: !ByteString
-    , responseQuery'proof  :: !ByteString
+    , responseQuery'proof  :: !Proof
     , responseQuery'height :: !Int64
     , responseQuery'log    :: !Text
     } -> Response Query
@@ -220,7 +220,7 @@ data Response (t :: MsgType) where
   ResponseBeginBlock :: Response BeginBlock
 
   ResponseEndBlock ::
-    { responseEndBlock'diffs :: ![Proto.Validator]
+    { responseEndBlock'diffs :: ![Proto.ValidatorUpdate]
     , responseEndBlock'consensus :: !(Maybe Proto.ConsensusParams)
     } -> Response EndBlock
 
@@ -236,7 +236,7 @@ instance Default (Response SetOption) where
   def = ResponseSetOption def ""
 
 instance Default (Response Query) where
-  def = ResponseQuery def def "" "" "" 0 ""
+  def = ResponseQuery def def "" "" (defMessage) 0 ""
 
 instance Default (Response InitChain) where
   def = ResponseInitChain
@@ -301,13 +301,9 @@ toProtoResponse (ResponseDeliverTx (CodeType code) data'' log' tags') =
 toProtoResponse (ResponseCheckTx (CodeType code) data'' log' gas' fee') =
   defMessage & Proto.maybe'value ?~ Proto._Response'CheckTx # (defMessage & Proto.code .~ code
                                                                           & Proto.data' .~ data''
-                                                                          & Proto.log .~ log'
-                                                                          & Proto.gas .~ gas'
-                                                                          & Proto.fee .~ fee')
-toProtoResponse (ResponseCommit (CodeType code) data'' log') =
-  defMessage & Proto.maybe'value ?~ Proto._Response'Commit # (defMessage & Proto.code .~ code
-                                                                         & Proto.data' .~ data''
-                                                                         & Proto.log .~ log')
+                                                                          & Proto.log .~ log')
+toProtoResponse (ResponseCommit data'') =
+  defMessage & Proto.maybe'value ?~ Proto._Response'Commit # (defMessage & Proto.data' .~ data'')
 toProtoResponse (ResponseQuery (CodeType c) i k v p h l) =
   defMessage & Proto.maybe'value ?~ Proto._Response'Query # (defMessage & Proto.code .~ c
                                                                         & Proto.index .~ i
@@ -347,7 +343,7 @@ withProtoRequest r f
   | Just _ <- r^.Proto.maybe'commit         = f (Just RequestCommit)
   | Just query <- r^.Proto.maybe'query           = f (Just (RequestQuery (query ^. Proto.data') (query ^. Proto.path) (query ^. Proto.height) (query ^. Proto.prove)))
   | Just initChain <- r^.Proto.maybe'initChain   = f (Just (RequestInitChain $ initChain ^. Proto.validators))
-  | Just beginBlock <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock (beginBlock ^. Proto.hash) (beginBlock ^. Proto.maybe'header) (beginBlock ^. Proto.absentValidators) (beginBlock ^. Proto.byzantineValidators)))
+  | Just beginBlock <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock (beginBlock ^. Proto.hash) (beginBlock ^. Proto.maybe'header) (beginBlock ^. Proto.byzantineValidators)))
   | Just endBlock <- r^.Proto.maybe'endBlock     = f (Just (RequestEndBlock $ endBlock ^. Proto.height))
   | otherwise                                    = f Nothing
 
