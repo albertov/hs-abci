@@ -20,9 +20,9 @@ import           Network.ABCI.Types as ReExport hiding (
                   , toProtoResponse)
 
 import           Control.Monad
-import           Control.Monad.IO.Class (MonadIO)
+import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Control (MonadBaseControl)
-import           Data.Conduit (ConduitT, runConduit, (.|))
+import           Data.Conduit (ConduitT, runConduit, (.|), awaitForever, yield)
 import qualified Data.Conduit.List as CL
 import           Data.Conduit.Network ( AppData
                                       , ServerSettings
@@ -38,10 +38,11 @@ import           Data.String (fromString)
 import           Data.Text (Text)
 import           Network.Socket (SockAddr)
 import           UnliftIO (MonadUnliftIO)
+import Data.Maybe (fromJust)
 
 -- | Default ABCI app network settings.
 defaultSettings :: ServerSettings
-defaultSettings = serverSettings 46658 "127.0.0.1"
+defaultSettings = serverSettings 26658 "127.0.0.1"
 
 -- | Serve an ABCI application with custom 'ServerSettings'
 serveAppWith
@@ -61,7 +62,9 @@ serveApp = serveAppWith defaultSettings
 setupConduit :: MonadIO m => App m -> AppData -> ConduitT i o m ()
 setupConduit app appData =
      appSource appData
+  .| (awaitForever $ \mInput -> liftIO (print "1" >> print mInput) >> yield (mInput))
   .| Wire.decodeLengthPrefixC
+  .| (awaitForever $ \mInput -> liftIO (print "2" >> print mInput) >> yield (mInput))
   .| CL.map (join . fmap PL.decodeMessage)
   .| CL.mapM (respondWith app)
   .| CL.map PL.encodeMessage
@@ -72,13 +75,16 @@ setupConduit app appData =
 -- | Wraps the ABCI application so it doesn't have to deal with the
 --   "weakly-typed" raw 'Proto.Request' and 'Proto.Response's
 respondWith
-  :: Monad m
+  :: (Monad m, MonadIO m)
   => App m -> Either String ABCI.Request -> m ABCI.Response
 respondWith _ (Left err) = respondErr ("Invalid request: " <> fromString err)
 respondWith (App app) (Right req) =
   withProtoRequest req (maybe (respondErr "Invalid request")
                               (fmap toProtoResponse . app))
 
+
 -- | "Throws" an ABCI raw 'ResponseException'
-respondErr :: Monad m => Text -> m ABCI.Response
-respondErr err = return (toProtoResponse (ResponseException err))
+respondErr :: (Monad m, MonadIO m) => Text -> m ABCI.Response
+respondErr err = do
+  liftIO $ print err
+  return (toProtoResponse (ResponseException err))

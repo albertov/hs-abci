@@ -8,6 +8,7 @@ module Counter (main) where
 import           Network.ABCI
 import           Network.ABCI.Internal.Wire (beWordFromBytes)
 import           Control.Monad (when)
+import Control.Monad.IO.Class(liftIO)
 import qualified Control.Concurrent.STM as STM
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -48,50 +49,52 @@ main = do
 
     -- You can do some per-connection initialization here if needed...
 
-    return $ App $ \case
-      RequestEcho msg -> return (ResponseEcho msg)
+    return $ App $ \x -> do
+      liftIO $ print x
+      case x of
+        RequestEcho msg -> return (ResponseEcho msg)
 
-      RequestFlush -> return def
+        RequestFlush -> return def
 
-      RequestInfo version -> do
-        CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
-        return def
-          { responseInfo'data =
-              fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
-          , responseInfo'version = version
-          }
+        RequestInfo version -> do
+          CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
+          return def
+            { responseInfo'data =
+                fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
+            , responseInfo'version = version
+            }
 
-      RequestSetOption key value -> do
-        when (key=="serial" && value=="on") (STM.atomically enableSerial)
-        return def
+        RequestSetOption key value -> do
+          when (key=="serial" && value=="on") (STM.atomically enableSerial)
+          return def
 
-      RequestDeliverTx txData -> do
-        (code, log') <- processTransaction stateVar txData incTxCount
-        return (ResponseDeliverTx code "" log' [])
+        RequestDeliverTx txData -> do
+          (code, log') <- processTransaction stateVar txData incTxCount
+          return (ResponseDeliverTx code "" log' [])
 
-      RequestCheckTx txData -> do
-        (code, log') <- processTransaction stateVar txData (return ())
-        return (ResponseCheckTx code "" log' 0 0)
+        RequestCheckTx txData -> do
+          (code, log') <- processTransaction stateVar txData (return ())
+          return (ResponseCheckTx code "" log' 0 0)
 
-      RequestCommit -> do
-        STM.atomically incHashCount
-        CounterState{csTxCount} <- STM.readTVarIO stateVar
-        let data' = if csTxCount == 0 then "" else serializeBe csTxCount
-        return (ResponseCommit data')
+        RequestCommit -> do
+          STM.atomically incHashCount
+          CounterState{csTxCount} <- STM.readTVarIO stateVar
+          let data' = if csTxCount == 0 then "" else serializeBe csTxCount
+          return (ResponseCommit data')
 
-      RequestQuery{requestQuery'path=path} -> do
-        state <- STM.readTVarIO stateVar
-        let retVal v = return def { responseQuery'value = fromString (show v) }
-            retErr msg = return def { responseQuery'log = fromString msg }
-        case path of
-          "hash" -> retVal (csHashCount state)
-          "tx"   -> retVal (csTxCount state)
-          p  -> retErr $ printf
-                  "Invalid query path. Expected hash or tx, got %s" (show p)
+        RequestQuery{requestQuery'path=path} -> do
+          state <- STM.readTVarIO stateVar
+          let retVal v = return def { responseQuery'value = fromString (show v) }
+              retErr msg = return def { responseQuery'log = fromString msg }
+          case path of
+            "hash" -> retVal (csHashCount state)
+            "tx"   -> retVal (csTxCount state)
+            p  -> retErr $ printf
+                    "Invalid query path. Expected hash or tx, got %s" (show p)
 
-      RequestInitChain _ -> return def
-      RequestBeginBlock _ _ _ -> return def
-      RequestEndBlock _ -> return def
+        RequestInitChain _ -> return def
+        RequestBeginBlock _ _ _ -> return def
+        RequestEndBlock _ -> return def
 
 serializeBe :: Int64 -> ByteString
 serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be

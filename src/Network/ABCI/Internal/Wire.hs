@@ -21,6 +21,7 @@ module Network.ABCI.Internal.Wire (
 , beWordFromBytes
 ) where
 
+import Control.Monad.IO.Class (MonadIO(liftIO))
 import qualified Data.Binary.Get as Get
 import qualified Data.Binary.Put as Put
 import           Data.Bits (shiftL)
@@ -30,6 +31,10 @@ import           Data.Conduit (ConduitT, awaitForever, await, yield)
 import           Data.Monoid ((<>))
 import           Data.Word (Word64)
 import           Text.Printf (printf)
+import Debug.Trace
+import Data.String.Conversions (cs)
+
+
 
 maxMessageLen :: Word64
 maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
@@ -48,22 +53,31 @@ encodeLengthPrefixC = awaitForever $
 -- | Transforms a stream of varlength-prefixed 'ByteString's to a stream
 --   of 'ByteString's
 decodeLengthPrefixC
-  :: Monad m
+  :: (Monad m, MonadIO m)
   => ConduitT BS.ByteString (Either String BS.ByteString) m ()
 decodeLengthPrefixC = go "" initialDecoder
   where
     go leftOver (Get.Done leftOver2 _ result) = do
+      liftIO $ print "decodePrefix:result"
+      liftIO $ print result
       yield (Right result)
       go (leftOver <> leftOver2) initialDecoder
     go leftOver (Get.Fail leftOver2 _ err) = do
+      liftIO $ print "decodePrefix:error"
+      liftIO $ print err
       yield (Left err)
       go (leftOver <> leftOver2) initialDecoder
     go "" decoder = do
+      liftIO $ print "decodePrefix"
       mInput <- await
+      liftIO $ print (fmap cs mInput :: Maybe String)
       case mInput of
-        Nothing -> return ()
-        Just s  -> go "" (Get.pushChunk decoder s)
-    go leftOver decoder =
+        Nothing ->  liftIO $ print "decodePrefix:done"
+        Just s  -> do
+          liftIO $ print "decodePrefix:Just"
+          go "" (Get.pushChunk decoder s)
+    go leftOver decoder = do
+      liftIO $ print "decodePrefix:startover?"
       go "" (Get.pushChunk decoder leftOver)
 
     initialDecoder = Get.runGetIncremental getLengthPrefixedByteString
@@ -78,15 +92,16 @@ putLengthPrefixedByteString s = do
 
 
 getLengthPrefixedByteString :: Get.Get BS.ByteString
-getLengthPrefixedByteString = do
+getLengthPrefixedByteString = traceShow "getLengthPre" $ do
   lenLen <- fromIntegral <$> Get.getWord8
-  mLen <- beWordFromBytes <$> Get.getByteString lenLen
+  mLen' <- beWordFromBytes <$> Get.getByteString lenLen
+  let mLen = traceShow mLen' $ mLen'
   case mLen of
     Right len ->
       if len <= maxMessageLen
-        then Get.getByteString (fromIntegral len)
-        else fail "Message is too large"
-    Left err -> fail err
+        then traceShow "Succeeded" $ Get.getByteString (fromIntegral len)
+        else traceShow "Failed" $ fail "Message is too large"
+    Left err -> traceShow err $ fail err
 {-# INLINEABLE getLengthPrefixedByteString #-}
 
 -- Decodes a 'Word64' from an arbitrary length big-endian encoded 'ByteString'

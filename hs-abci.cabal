@@ -44,6 +44,7 @@ library
     , network
     , proto-lens
     , proto-lens-runtime
+    , string-conversions
     , text
     , transformers
     , unliftio
