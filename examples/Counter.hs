@@ -50,6 +50,7 @@ main = do
     -- You can do some per-connection initialization here if needed...
 
     return $ App $ \x -> do
+      liftIO $ print "Received decoded message in app"
       liftIO $ print x
       case x of
         RequestEcho msg -> return (ResponseEcho msg)
@@ -58,12 +59,13 @@ main = do
 
         RequestInfo version -> do
           CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
-          return def
-            { responseInfo'data =
-                fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
-            , responseInfo'version = version
-            }
-
+          let resp = def
+                { responseInfo'data =
+                    fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
+                , responseInfo'version = version
+                }
+          liftIO $ print resp
+          return resp
         RequestSetOption key value -> do
           when (key=="serial" && value=="on") (STM.atomically enableSerial)
           return def

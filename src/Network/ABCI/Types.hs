@@ -74,6 +74,7 @@ import           Data.Text (Text)
 import           Data.Word (Word32)
 import           Lens.Micro
 
+import Debug.Trace
 
 -- | An 'App' is a monadic function from 'Request' to 'Response'.
 --   We tag both with the 'MsgType' to enforce at the type-level that
@@ -335,17 +336,17 @@ withProtoRequest
   -> a
 withProtoRequest r f
   | Just echo  <- r^.Proto.maybe'echo            = f (Just (RequestEcho $ echo ^. Proto.message))
-  | Just _ <- r^.Proto.maybe'flush           = f (Just RequestFlush)
   | Just info  <- r^.Proto.maybe'info            = f (Just (RequestInfo $ info ^. Proto.version))
   | Just setOption <- r^.Proto.maybe'setOption   = f (Just (RequestSetOption (setOption ^. Proto.key) (setOption ^. Proto.value)))
   | Just deliverTx <- r^.Proto.maybe'deliverTx   = f (Just (RequestDeliverTx $ deliverTx ^. Proto.tx))
   | Just requestTx <- r^.Proto.maybe'checkTx     = f (Just (RequestCheckTx $ requestTx ^. Proto.tx))
-  | Just _ <- r^.Proto.maybe'commit         = f (Just RequestCommit)
   | Just query <- r^.Proto.maybe'query           = f (Just (RequestQuery (query ^. Proto.data') (query ^. Proto.path) (query ^. Proto.height) (query ^. Proto.prove)))
   | Just initChain <- r^.Proto.maybe'initChain   = f (Just (RequestInitChain $ initChain ^. Proto.validators))
   | Just beginBlock <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock (beginBlock ^. Proto.hash) (beginBlock ^. Proto.maybe'header) (beginBlock ^. Proto.byzantineValidators)))
   | Just endBlock <- r^.Proto.maybe'endBlock     = f (Just (RequestEndBlock $ endBlock ^. Proto.height))
-  | otherwise                                    = f Nothing
+  | Just _ <- r^.Proto.maybe'commit         = f (Just RequestCommit)
+  | Just _ <- r^.Proto.maybe'flush               = f (Just RequestFlush)
+  | otherwise                                    = traceShow r $ f Nothing
 
 
 

@@ -50,7 +50,9 @@ serveAppWith
   => ServerSettings -> (SockAddr -> m (App m)) -> m ()
 serveAppWith cfg mkApp = runGeneralTCPServer cfg $ \appData -> do
   app <- mkApp (appSockAddr appData)
+  liftIO $ print "runConduit"
   runConduit (setupConduit app appData)
+  liftIO $ print "hello?"
 
 -- | Serve an ABCI application with default 'ServerSettings'
 serveApp
@@ -67,9 +69,12 @@ setupConduit app appData =
   .| (awaitForever $ \mInput -> liftIO (print "2" >> print mInput) >> yield (mInput))
   .| CL.map (join . fmap PL.decodeMessage)
   .| CL.mapM (respondWith app)
+  .| (awaitForever $ \mInput -> liftIO (print "3" >> print mInput) >> yield (mInput))
   .| CL.map PL.encodeMessage
   .| Wire.encodeLengthPrefixC
+  .| (awaitForever $ \mInput -> liftIO (print "4" >> print mInput) >> yield (mInput))
   .| appSink appData
+  .| (awaitForever $ \mInput -> liftIO (print "5"))
 
 
 -- | Wraps the ABCI application so it doesn't have to deal with the
@@ -77,8 +82,12 @@ setupConduit app appData =
 respondWith
   :: (Monad m, MonadIO m)
   => App m -> Either String ABCI.Request -> m ABCI.Response
-respondWith _ (Left err) = respondErr ("Invalid request: " <> fromString err)
-respondWith (App app) (Right req) =
+respondWith _ (Left err) = do
+  liftIO $ print ("Invalid request: " <> fromString err)
+  respondErr ("Invalid request: " <> fromString err)
+respondWith (App app) (Right req) = do
+  liftIO $ print "req"
+  liftIO $ print (show req)
   withProtoRequest req (maybe (respondErr "Invalid request")
                               (fmap toProtoResponse . app))
 
