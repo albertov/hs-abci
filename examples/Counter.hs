@@ -94,7 +94,7 @@ main = do
             p  -> retErr $ printf
                     "Invalid query path. Expected hash or tx, got %s" (show p)
 
-        RequestInitChain _ -> return def
+        RequestInitChain vs cparams -> return (ResponseInitChain vs cparams)
         RequestBeginBlock _ _ _ -> return def
         RequestEndBlock _ -> return def
 

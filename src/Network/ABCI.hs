@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
 module Network.ABCI (
   serveApp
@@ -22,7 +23,7 @@ import           Network.ABCI.Types as ReExport hiding (
 import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Control (MonadBaseControl)
-import           Data.Conduit (ConduitT, runConduit, (.|), awaitForever, yield)
+import           Data.Conduit (ConduitT, runConduit, (.|), awaitForever, yield, catchC)
 import qualified Data.Conduit.List as CL
 import           Data.Conduit.Network ( AppData
                                       , ServerSettings
@@ -39,6 +40,9 @@ import           Data.Text (Text)
 import           Network.Socket (SockAddr)
 import           UnliftIO (MonadUnliftIO)
 import Data.Maybe (fromJust)
+import Control.Exception.Base
+
+
 
 -- | Default ABCI app network settings.
 defaultSettings :: ServerSettings
@@ -61,7 +65,7 @@ serveApp
 serveApp = serveAppWith defaultSettings
 
 -- | Sets up the application wire pipeline.
-setupConduit :: MonadIO m => App m -> AppData -> ConduitT i o m ()
+setupConduit :: (MonadIO m, MonadUnliftIO m) => App m -> AppData -> ConduitT i o m ()
 setupConduit app appData =
      appSource appData
   .| (awaitForever $ \mInput -> liftIO (print "1" >> print mInput) >> yield (mInput))

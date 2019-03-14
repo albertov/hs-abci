@@ -147,6 +147,7 @@ data Request (t :: MsgType) where
 
   RequestInitChain ::
     { requestInitChain'validators :: ![Proto.ValidatorUpdate]
+    , requestInitChain'consensusParams :: !(Maybe Proto.ConsensusParams)
     } -> Request InitChain
 
   RequestBeginBlock ::
@@ -216,7 +217,10 @@ data Response (t :: MsgType) where
     , responseQuery'log    :: !Text
     } -> Response Query
 
-  ResponseInitChain :: Response InitChain
+  ResponseInitChain ::
+    { responseInitChain'Validators :: [Proto.ValidatorUpdate]
+    , responseInitChain'ConsensusParams :: Maybe Proto.ConsensusParams
+    } -> Response InitChain
 
   ResponseBeginBlock :: Response BeginBlock
 
@@ -240,7 +244,7 @@ instance Default (Response Query) where
   def = ResponseQuery def def "" "" (defMessage) 0 ""
 
 instance Default (Response InitChain) where
-  def = ResponseInitChain
+  def = ResponseInitChain def def
 
 instance Default (Response BeginBlock) where
   def = ResponseBeginBlock
@@ -313,8 +317,10 @@ toProtoResponse (ResponseQuery (CodeType c) i k v p h l) =
                                                                         & Proto.proof .~ p
                                                                         & Proto.height .~ h
                                                                         & Proto.log .~ l)
-toProtoResponse ResponseInitChain =
-  defMessage & Proto.maybe'value ?~ Proto._Response'InitChain # defMessage
+toProtoResponse (ResponseInitChain vs cps) =
+  defMessage & Proto.maybe'value ?~ Proto._Response'InitChain # (defMessage & Proto.validators .~ vs
+                                                                            & Proto.maybe'consensusParams .~ cps
+                                                                )
 toProtoResponse ResponseBeginBlock =
   defMessage & Proto.maybe'value ?~ Proto._Response'BeginBlock # defMessage
 toProtoResponse (ResponseEndBlock vs consensus) =
@@ -341,7 +347,7 @@ withProtoRequest r f
   | Just deliverTx <- r^.Proto.maybe'deliverTx   = f (Just (RequestDeliverTx $ deliverTx ^. Proto.tx))
   | Just requestTx <- r^.Proto.maybe'checkTx     = f (Just (RequestCheckTx $ requestTx ^. Proto.tx))
   | Just query <- r^.Proto.maybe'query           = f (Just (RequestQuery (query ^. Proto.data') (query ^. Proto.path) (query ^. Proto.height) (query ^. Proto.prove)))
-  | Just initChain <- r^.Proto.maybe'initChain   = f (Just (RequestInitChain $ initChain ^. Proto.validators))
+  | Just initChain <- r^.Proto.maybe'initChain   = f (Just (RequestInitChain (initChain ^. Proto.validators) (initChain ^. Proto.maybe'consensusParams)))
   | Just beginBlock <- r^.Proto.maybe'beginBlock = f (Just (RequestBeginBlock (beginBlock ^. Proto.hash) (beginBlock ^. Proto.maybe'header) (beginBlock ^. Proto.byzantineValidators)))
   | Just endBlock <- r^.Proto.maybe'endBlock     = f (Just (RequestEndBlock $ endBlock ^. Proto.height))
   | Just _ <- r^.Proto.maybe'commit         = f (Just RequestCommit)
