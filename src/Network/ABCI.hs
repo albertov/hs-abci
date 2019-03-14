@@ -91,8 +91,7 @@ addFlushMessageAndEncode = awaitForever $ \resp ->
     -- include a flush message every time \shrug
     if isAsynchronousResponse resp
       then yield (PL.encodeMessage resp, PL.encodeMessage flushMessage)
-      else do
-        yield (PL.encodeMessage resp, PL.encodeMessage flushMessage)
+      else yield (PL.encodeMessage resp, PL.encodeMessage flushMessage)
   where
    flushMessage = toProtoResponse ResponseFlush
 
