@@ -22,31 +22,14 @@ module Network.ABCI.Internal.Wire (
 , beWordFromBytes
 ) where
 
-import qualified Data.ProtoLens.Encoding as PL
-import Control.Monad.IO.Class (MonadIO(liftIO))
-import qualified Data.Binary.Get as Get
-import qualified Data.Binary.Put as Put
+import Control.Monad.IO.Class (MonadIO)
 import           Data.Bits (shiftL)
 import qualified Data.ByteString as BS
-import           Data.ByteString.Lazy (toChunks)
-import qualified Data.ByteString.Lazy as BL
-import           Data.Conduit (ConduitT, awaitForever, await, yield)
-import           Data.Monoid ((<>))
+import           Data.Conduit (ConduitT, awaitForever, yield)
 import           Data.Word (Word64)
 import           Text.Printf (printf)
-import Debug.Trace
-import Data.String.Conversions (cs)
-import qualified Data.Binary             as B
-import qualified Data.Bits               as B
-import Data.Word (Word8)
-import Data.List (unfoldr)
 import Data.ProtoLens.Encoding.Bytes (runParser, getVarInt, runBuilder, putVarInt, wordToSignedInt64, signedInt64ToWord)
 import Data.Maybe (fromMaybe)
-import qualified Data.ByteString.Base16 as B16
-
-
-maxMessageLen :: Word64
-maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
 
 
 -- | Transforms a stream of 'ByteString' to a stream of varlength-prefixed
@@ -57,7 +40,6 @@ encodeLengthPrefixC
 encodeLengthPrefixC = awaitForever $ \bytes -> do
   let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
       header = runBuilder (putVarInt headerN)
-  liftIO $ print (headerN, header, bytes)
   yield $ header `BS.append` bytes
 {-# INLINEABLE encodeLengthPrefixC #-}
 
@@ -71,8 +53,6 @@ decodeLengthPrefixC = awaitForever $ \bytes ->
       let lengthHeader  = runBuilder $ putVarInt n
           messageBytesWithTail = fromMaybe (error $ "header not actually a prefix?") $ BS.stripPrefix lengthHeader bytes
           messageBytes = BS.take (fromIntegral $ wordToSignedInt64 n) messageBytesWithTail
-      liftIO $ print (cs bytes :: String)
-      liftIO $ print (toInteger n :: Integer, cs $ B16.encode bytes :: String, cs $ B16.encode messageBytes :: String, BS.length messageBytes)
       yield (Right messageBytes)
 {-# INLINEABLE decodeLengthPrefixC #-}
 

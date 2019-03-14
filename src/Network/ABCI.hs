@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RankNTypes #-}
@@ -23,7 +24,7 @@ import           Network.ABCI.Types as ReExport hiding (
 import           Control.Monad
 import           Control.Monad.IO.Class (MonadIO(..))
 import           Control.Monad.Trans.Control (MonadBaseControl)
-import           Data.Conduit (ConduitT, runConduit, (.|), awaitForever, yield, catchC)
+import           Data.Conduit (ConduitT, runConduit, (.|), await, awaitForever, yield, catchC)
 import qualified Data.Conduit.List as CL
 import           Data.Conduit.Network ( AppData
                                       , ServerSettings
@@ -39,10 +40,8 @@ import           Data.String (fromString)
 import           Data.Text (Text)
 import           Network.Socket (SockAddr)
 import           UnliftIO (MonadUnliftIO)
-import Data.Maybe (fromJust)
-import Control.Exception.Base
-
-
+import Data.ByteString.Base16 as B16
+import Data.String.Conversions (cs)
 
 -- | Default ABCI app network settings.
 defaultSettings :: ServerSettings
@@ -68,17 +67,17 @@ serveApp = serveAppWith defaultSettings
 setupConduit :: (MonadIO m, MonadUnliftIO m) => App m -> AppData -> ConduitT i o m ()
 setupConduit app appData =
      appSource appData
-  .| (awaitForever $ \mInput -> liftIO (print "1" >> print mInput) >> yield (mInput))
+  .| (awaitForever $ \mInput -> liftIO (print "Stage 1: bytes come in" >> putStrLn (cs . B16.encode $ mInput)) >> yield mInput)
   .| Wire.decodeLengthPrefixC
-  .| (awaitForever $ \mInput -> liftIO (print "2" >> print mInput) >> yield (mInput))
+  .| (awaitForever $ \mInput -> liftIO (print "Stage 2: stripped the prefixes" >> print @(Either String String) (fmap (cs . B16.encode) $ mInput)) >> yield mInput)
   .| CL.map (join . fmap PL.decodeMessage)
   .| CL.mapM (respondWith app)
-  .| (awaitForever $ \mInput -> liftIO (print "3" >> print mInput) >> yield (mInput))
+  .| (awaitForever $ \mInput -> liftIO (print "Stage 3: ran the handlers and got results" >> print mInput) >> yield mInput)
   .| CL.map PL.encodeMessage
   .| Wire.encodeLengthPrefixC
-  .| (awaitForever $ \mInput -> liftIO (print "4" >> print mInput) >> yield (mInput))
+  .| (awaitForever $ \mInput -> liftIO (print "Stage 4: encoded the response" >> putStrLn (cs . B16.encode $ mInput)) >> yield (mInput))
   .| appSink appData
-  .| (awaitForever $ \mInput -> liftIO (print "5"))
+  .| (await >>= \_ -> liftIO (print "Stage 5: sent bytes back"))
 
 
 -- | Wraps the ABCI application so it doesn't have to deal with the
@@ -90,8 +89,6 @@ respondWith _ (Left err) = do
   liftIO $ print ("Invalid request: " <> fromString err)
   respondErr ("Invalid request: " <> fromString err)
 respondWith (App app) (Right req) = do
-  liftIO $ print "req"
-  liftIO $ print (show req)
   withProtoRequest req (maybe (respondErr "Invalid request")
                               (fmap toProtoResponse . app))
 
