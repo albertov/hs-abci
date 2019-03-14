@@ -47,6 +47,7 @@ module Network.ABCI.Types (
 -- * protobuf/GADT 'Request'/'Response' conversion
 
 , toProtoResponse
+, isAsynchronousResponse
 , withProtoRequest
 
 -- * Re-exports
@@ -67,7 +68,7 @@ import Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle (Proof)
 
 import           Data.ByteString (ByteString)
 import           Data.Default (Default(def))
-import           Data.Int (Int64, Int32)
+import           Data.Int (Int64)
 import           Data.ProtoLens (defMessage)
 import           Data.ProtoLens.Prism ((#))
 import           Data.Text (Text)
@@ -327,6 +328,13 @@ toProtoResponse (ResponseEndBlock vs consensus) =
   defMessage & Proto.maybe'value ?~ Proto._Response'EndBlock # (defMessage & Proto.validatorUpdates .~ vs
                                                                            & Proto.maybe'consensusParamUpdates .~ consensus)
 
+isAsynchronousResponse
+  :: Proto.Response
+  -> Bool
+isAsynchronousResponse resp
+  | Just _ <- resp ^. Proto.maybe'checkTx = True
+  | Just _ <- resp ^. Proto.maybe'deliverTx = True
+  | otherwise = False
 
 -- | Translates the unsafe auto-generated 'Proto.Request' to a type-safe
 --   'Request GADT so users can safely pattern-match on it

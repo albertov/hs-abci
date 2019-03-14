@@ -50,7 +50,6 @@ main = do
     -- You can do some per-connection initialization here if needed...
 
     return $ App $ \x -> do
-      liftIO $ print "Running Handler ..."
       liftIO $ print x
       case x of
         RequestEcho msg -> return (ResponseEcho msg)

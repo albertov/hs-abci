@@ -17,7 +17,7 @@ really happening and change to INLINE to force inlining if it doesn't
 {-# LANGUAGE LambdaCase #-}
 
 module Network.ABCI.Internal.Wire (
-  encodeLengthPrefixC
+  encodeLengthPrefix
 , decodeLengthPrefixC
 , beWordFromBytes
 ) where
@@ -34,14 +34,14 @@ import Data.Maybe (fromMaybe)
 
 -- | Transforms a stream of 'ByteString' to a stream of varlength-prefixed
 --   'ByteString's
-encodeLengthPrefixC
-  :: (Monad m, MonadIO m)
-  => ConduitT BS.ByteString BS.ByteString m ()
-encodeLengthPrefixC = awaitForever $ \bytes -> do
+encodeLengthPrefix
+  ::  BS.ByteString
+  -> BS.ByteString
+encodeLengthPrefix bytes =
   let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
       header = runBuilder (putVarInt headerN)
-  yield $ header `BS.append` bytes
-{-# INLINEABLE encodeLengthPrefixC #-}
+  in header `BS.append` bytes -- `BS.append` "041a00"
+{-# INLINEABLE encodeLengthPrefix #-}
 
 decodeLengthPrefixC
   :: (Monad m, MonadIO m)
