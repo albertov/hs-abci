@@ -1,9 +1,9 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE KindSignatures #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DataKinds          #-}
+{-# LANGUAGE FlexibleInstances  #-}
+{-# LANGUAGE GADTs              #-}
+{-# LANGUAGE KindSignatures     #-}
+{-# LANGUAGE OverloadedStrings  #-}
+{-# LANGUAGE RankNTypes         #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Network.ABCI.Types (
@@ -47,7 +47,6 @@ module Network.ABCI.Types (
 -- * protobuf/GADT 'Request'/'Response' conversion
 
 , toProtoResponse
-, isAsynchronousResponse
 , withProtoRequest
 
 -- * Re-exports
@@ -61,21 +60,21 @@ module Network.ABCI.Types (
 , Proto.Validator ()
 ) where
 
-import qualified Proto.Types as Proto
-import qualified Proto.Types_Fields as Proto
-import Proto.Vendored.Tendermint.Tendermint.Libs.Common.Types (KVPair)
-import Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle (Proof)
+import qualified Proto.Types                                               as Proto
+import qualified Proto.Types_Fields                                        as Proto
+import           Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle (Proof)
+import           Proto.Vendored.Tendermint.Tendermint.Libs.Common.Types    (KVPair)
 
-import           Data.ByteString (ByteString)
-import           Data.Default (Default(def))
-import           Data.Int (Int64)
-import           Data.ProtoLens (defMessage)
-import           Data.ProtoLens.Prism ((#))
-import           Data.Text (Text)
-import           Data.Word (Word32)
+import           Data.ByteString                                           (ByteString)
+import           Data.Default                                              (Default (def))
+import           Data.Int                                                  (Int64)
+import           Data.ProtoLens                                            (defMessage)
+import           Data.ProtoLens.Prism                                      (( # ))
+import           Data.Text                                                 (Text)
+import           Data.Word                                                 (Word32)
 import           Lens.Micro
 
-import Debug.Trace
+import           Debug.Trace
 
 -- | An 'App' is a monadic function from 'Request' to 'Response'.
 --   We tag both with the 'MsgType' to enforce at the type-level that
@@ -328,13 +327,6 @@ toProtoResponse (ResponseEndBlock vs consensus) =
   defMessage & Proto.maybe'value ?~ Proto._Response'EndBlock # (defMessage & Proto.validatorUpdates .~ vs
                                                                            & Proto.maybe'consensusParamUpdates .~ consensus)
 
-isAsynchronousResponse
-  :: Proto.Response
-  -> Bool
-isAsynchronousResponse resp
-  | Just _ <- resp ^. Proto.maybe'checkTx = True
-  | Just _ <- resp ^. Proto.maybe'deliverTx = True
-  | otherwise = False
 
 -- | Translates the unsafe auto-generated 'Proto.Request' to a type-safe
 --   'Request GADT so users can safely pattern-match on it

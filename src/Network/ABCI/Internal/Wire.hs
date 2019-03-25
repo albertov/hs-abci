@@ -12,9 +12,9 @@ FIXME: we should check core and/or benchmark this to make sure fusion is
 really happening and change to INLINE to force inlining if it doesn't
 
 -}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns      #-}
+{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE LambdaCase #-}
 
 module Network.ABCI.Internal.Wire (
   encodeLengthPrefix
@@ -22,15 +22,18 @@ module Network.ABCI.Internal.Wire (
 , beWordFromBytes
 ) where
 
-import Control.Monad.IO.Class (MonadIO)
-import           Data.Bits (shiftL)
-import qualified Data.ByteString as BS
-import           Data.Conduit (ConduitT, awaitForever, yield)
-import           Data.Word (Word64)
-import           Text.Printf (printf)
-import Data.ProtoLens.Encoding.Bytes (runParser, getVarInt, runBuilder, putVarInt, wordToSignedInt64, signedInt64ToWord)
-import Data.Maybe (fromMaybe)
-
+import           Control.Monad.IO.Class        (MonadIO)
+import           Data.Bits                     (shiftL)
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Base16        as BS16
+import           Data.Conduit                  (ConduitT, awaitForever, yield)
+import           Data.ProtoLens.Encoding.Bytes (getVarInt, putVarInt,
+                                                runBuilder, runParser,
+                                                signedInt64ToWord,
+                                                wordToSignedInt64)
+import           Data.String.Conversions       (cs)
+import           Data.Word                     (Word64)
+import           Text.Printf                   (printf)
 
 -- | Transforms a stream of 'ByteString' to a stream of varlength-prefixed
 --   'ByteString's
@@ -40,20 +43,30 @@ encodeLengthPrefix
 encodeLengthPrefix bytes =
   let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
       header = runBuilder (putVarInt headerN)
-  in header `BS.append` bytes -- `BS.append` "041a00"
+  in header `BS.append` bytes
 {-# INLINEABLE encodeLengthPrefix #-}
 
 decodeLengthPrefixC
   :: (Monad m, MonadIO m)
-  => ConduitT BS.ByteString (Either String BS.ByteString) m ()
+  => ConduitT BS.ByteString (Either String [BS.ByteString]) m ()
 decodeLengthPrefixC = awaitForever $ \bytes ->
-  case runParser getVarInt bytes of
-    Left err -> yield (Left err)
-    Right n -> do
-      let lengthHeader  = runBuilder $ putVarInt n
-          messageBytesWithTail = fromMaybe (error $ "header not actually a prefix?") $ BS.stripPrefix lengthHeader bytes
-          messageBytes = BS.take (fromIntegral $ wordToSignedInt64 n) messageBytesWithTail
-      yield (Right messageBytes)
+  case splitOffMessages bytes of
+    Left err       -> yield (Left err)
+    Right messages -> yield $ Right messages
+  where
+    splitOffMessages :: BS.ByteString -> Either String [BS.ByteString]
+    splitOffMessages bs
+      | bs == mempty = pure []
+      | otherwise = do
+          n <- runParser getVarInt bs
+          let lengthHeader = runBuilder $ putVarInt n
+          messageBytesWithTail <- case BS.stripPrefix lengthHeader bs of
+            Nothing -> let prefixWithMsg = show @(String, String) (cs . BS16.encode $ lengthHeader, cs . BS16.encode $ bs)
+                       in Left $ "prefix not actually a prefix!: " <> prefixWithMsg
+            Just a -> pure a
+          let (messageBytes, remainder) = BS.splitAt (fromIntegral $ wordToSignedInt64 n) messageBytesWithTail
+          (messageBytes : ) <$> splitOffMessages remainder
+
 {-# INLINEABLE decodeLengthPrefixC #-}
 
 

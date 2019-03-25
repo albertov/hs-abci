@@ -1,25 +1,25 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Counter (main) where
 
+import qualified Control.Concurrent.STM     as STM
+import           Control.Monad              (when)
+import           Control.Monad.IO.Class     (liftIO)
+import qualified Data.Binary.Put            as Put
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as LBS
+import           Data.Hex                   (unhex)
+import           Data.Int                   (Int64)
+import           Data.String                (fromString)
+import           Data.Text                  (Text)
 import           Network.ABCI
 import           Network.ABCI.Internal.Wire (beWordFromBytes)
-import           Control.Monad (when)
-import Control.Monad.IO.Class(liftIO)
-import qualified Control.Concurrent.STM as STM
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
-import           Data.Int (Int64)
-import qualified Data.Binary.Put as Put
-import           Data.Hex (unhex)
-import           Data.String (fromString)
-import           Data.Text (Text)
-import           Text.Printf (printf)
 import           System.Environment
+import           Text.Printf                (printf)
 
 data CounterState = CounterState
   { csSerial    :: !Bool
@@ -49,8 +49,7 @@ main = do
 
     -- You can do some per-connection initialization here if needed...
 
-    return $ App $ \x -> do
-      liftIO $ print x
+    return $ App $ \x ->
       case x of
         RequestEcho msg -> return (ResponseEcho msg)
 
@@ -80,7 +79,7 @@ main = do
         RequestCommit -> do
           STM.atomically incHashCount
           CounterState{csTxCount} <- STM.readTVarIO stateVar
-          let data' = if csTxCount == 0 then "" else serializeBe csTxCount
+          let data' = serializeBe csTxCount
           return (ResponseCommit data')
 
         RequestQuery{requestQuery'path=path} -> do
