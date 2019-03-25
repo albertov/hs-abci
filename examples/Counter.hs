@@ -49,8 +49,7 @@ main = do
 
     -- You can do some per-connection initialization here if needed...
 
-    return $ App $ \x ->
-      case x of
+    return $ App $ \case
         RequestEcho msg -> return (ResponseEcho msg)
 
         RequestFlush -> return def
@@ -93,8 +92,8 @@ main = do
                     "Invalid query path. Expected hash or tx, got %s" (show p)
 
         RequestInitChain vs cparams -> return (ResponseInitChain vs cparams)
-        RequestBeginBlock _ _ _ -> return def
-        RequestEndBlock _ -> return def
+        RequestBeginBlock{} -> return def
+        RequestEndBlock{} -> return def
 
 serializeBe :: Int64 -> ByteString
 serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
@@ -102,13 +101,13 @@ serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
 processTransaction
   :: STM.TVar CounterState
   -> ByteString
-  -> (STM.STM ())
+  -> STM.STM ()
   -> IO (CodeType, Text)
 processTransaction stateVar txData increment = STM.atomically $ do
     CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
     case parseTxValue txData of
       Right txValue -> do
-        if (csSerial && txValue /= csTxCount)
+        if csSerial && txValue /= csTxCount
           then return
             ( codeTypeBadNonce
             , fromString
@@ -125,4 +124,4 @@ parseTxValue s =
     Nothing -> Left ("Invalid hex string: " ++ show s)
 
 hasSerialArg :: IO Bool
-hasSerialArg = fmap (any (== "--serial")) getArgs
+hasSerialArg =  getArgs >>= \args -> pure ("--serial" `elem` args)

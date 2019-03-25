@@ -241,7 +241,7 @@ instance Default (Response SetOption) where
   def = ResponseSetOption def ""
 
 instance Default (Response Query) where
-  def = ResponseQuery def def "" "" (defMessage) 0 ""
+  def = ResponseQuery def def "" "" defMessage 0 ""
 
 instance Default (Response InitChain) where
   def = ResponseInitChain def def

@@ -13,7 +13,6 @@ really happening and change to INLINE to force inlining if it doesn't
 
 -}
 {-# LANGUAGE BangPatterns      #-}
-{-# LANGUAGE LambdaCase        #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.ABCI.Internal.Wire (
