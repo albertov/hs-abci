@@ -303,7 +303,7 @@ toProtoResponse (ResponseDeliverTx (CodeType code) data'' log' tags') =
                                                                             & Proto.data' .~ data''
                                                                             & Proto.log .~ log'
                                                                             & Proto.tags .~ tags')
-toProtoResponse (ResponseCheckTx (CodeType code) data'' log' gas' fee') =
+toProtoResponse (ResponseCheckTx (CodeType code) data'' log' _ _) =
   defMessage & Proto.maybe'value ?~ Proto._Response'CheckTx # (defMessage & Proto.code .~ code
                                                                           & Proto.data' .~ data''
                                                                           & Proto.log .~ log')
