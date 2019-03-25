@@ -78,7 +78,7 @@ main = do
         RequestCommit -> do
           STM.atomically incHashCount
           CounterState{csTxCount} <- STM.readTVarIO stateVar
-          let data' = serializeBe csTxCount
+          let data' = if csTxCount == 0 then mempty else serializeBe csTxCount
           return (ResponseCommit data')
 
         RequestQuery{requestQuery'path=path} -> do
