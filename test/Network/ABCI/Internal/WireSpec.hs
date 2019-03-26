@@ -2,7 +2,6 @@
 module Network.ABCI.Internal.WireSpec (main, spec) where
 
 import           Network.ABCI.Internal.Wire
-
 import           Control.Monad (replicateM)
 import qualified Data.Binary.Put as Put
 import qualified Data.ByteString as BS
@@ -56,6 +55,7 @@ spec = do
     it "decoding an encoded bytestring yields the same bytestring" $
       property $ \(bytelist, nonNegativeChunkSizes) ->
         let conduit = chunksProducer bytes nonNegativeChunkSizes
+                   .| CL.map (\a -> [a])
                    .| encodeLengthPrefixC
                    .| decodeLengthPrefixC
                    .| consumeValidChunks
@@ -99,10 +99,11 @@ runIdConduit = runIdentity . runConduit
 -- without checking for further errors
 consumeValidChunks
   :: Monad m
-  => ConduitT (Either String BS.ByteString) Void m (Either String BS.ByteString)
+  => ConduitT (Either String [BS.ByteString]) Void m (Either String BS.ByteString)
 consumeValidChunks = CL.fold step (Right BS.empty)
   where
-    step (Right acc) (Right s)  = Right (acc <> s)
+    step (Right acc) (Right [s])  = Right (acc <> s)
+    step (Right _) (Right _)  = Left "Expecting Singleton List"
     step (Right _)   (Left err) = Left err
     step (Left err)  _          = Left err
 

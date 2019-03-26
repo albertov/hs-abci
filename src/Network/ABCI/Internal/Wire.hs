@@ -16,16 +16,16 @@ really happening and change to INLINE to force inlining if it doesn't
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.ABCI.Internal.Wire (
-  encodeLengthPrefix
+  encodeLengthPrefixC
 , decodeLengthPrefixC
 , beWordFromBytes
 ) where
 
-import           Control.Monad.IO.Class        (MonadIO)
 import           Data.Bits                     (shiftL)
 import qualified Data.ByteString               as BS
 import qualified Data.ByteString.Base16        as BS16
 import           Data.Conduit                  (ConduitT, awaitForever, yield)
+import qualified Data.Conduit.List             as CL
 import           Data.ProtoLens.Encoding.Bytes (getVarInt, putVarInt,
                                                 runBuilder, runParser,
                                                 signedInt64ToWord,
@@ -36,17 +36,18 @@ import           Text.Printf                   (printf)
 
 -- | Transforms a stream of 'ByteString' to a stream of varlength-prefixed
 --   'ByteString's
-encodeLengthPrefix
-  ::  BS.ByteString
-  -> BS.ByteString
-encodeLengthPrefix bytes =
-  let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
-      header = runBuilder (putVarInt headerN)
-  in header `BS.append` bytes
-{-# INLINEABLE encodeLengthPrefix #-}
+encodeLengthPrefixC
+  :: Monad m => ConduitT [BS.ByteString] BS.ByteString m ()
+encodeLengthPrefixC = CL.map $ foldMap encodeLengthPrefix
+  where
+    encodeLengthPrefix bytes =
+      let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
+          header = runBuilder (putVarInt headerN)
+      in header `BS.append` bytes
+{-# INLINEABLE encodeLengthPrefixC #-}
 
 decodeLengthPrefixC
-  :: (Monad m, MonadIO m)
+  :: Monad m
   => ConduitT BS.ByteString (Either String [BS.ByteString]) m ()
 decodeLengthPrefixC = awaitForever $ \bytes ->
   case splitOffMessages bytes of

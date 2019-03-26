@@ -14,9 +14,7 @@ module Network.ABCI (
 
 import           Control.Monad.IO.Class      (MonadIO (..))
 import           Control.Monad.Trans.Control (MonadBaseControl)
-import qualified Data.ByteString             as BS
-import           Data.Conduit                (ConduitT, awaitForever,
-                                              runConduit, yield, (.|))
+import           Data.Conduit                (ConduitT, runConduit, (.|))
 import qualified Data.Conduit.List           as CL
 import           Data.Conduit.Network        (AppData, ServerSettings, appSink,
                                               appSockAddr, appSource,
@@ -64,12 +62,9 @@ setupConduit app appData =
   .| Wire.decodeLengthPrefixC
   .| CL.map (traverse PL.decodeMessage =<<)
   .| CL.mapM (respondWith app)
-  .| encodeMessages
+  .| CL.map (map PL.encodeMessage)
+  .| Wire.encodeLengthPrefixC
   .| appSink appData
-
-encodeMessages :: (Monad m, MonadIO m) => ConduitT [ABCI.Response] BS.ByteString m ()
-encodeMessages = awaitForever $ \resps ->
-  yield $ foldMap (Wire.encodeLengthPrefix . PL.encodeMessage)  resps
 
 -- | Wraps the ABCI application so it doesn't have to deal with the
 --   "weakly-typed" raw 'Proto.Request' and 'Proto.Response's
