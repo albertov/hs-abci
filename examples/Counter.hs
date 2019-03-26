@@ -1,24 +1,25 @@
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE FlexibleContexts  #-}
+{-# LANGUAGE GADTs             #-}
+{-# LANGUAGE LambdaCase        #-}
+{-# LANGUAGE NamedFieldPuns    #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Counter (main) where
 
+import qualified Control.Concurrent.STM     as STM
+import           Control.Monad              (when)
+import           Control.Monad.IO.Class     (liftIO)
+import qualified Data.Binary.Put            as Put
+import           Data.ByteString            (ByteString)
+import qualified Data.ByteString            as BS
+import qualified Data.ByteString.Lazy       as LBS
+import           Data.Hex                   (unhex)
+import           Data.Int                   (Int64)
+import           Data.String                (fromString)
+import           Data.Text                  (Text)
 import           Network.ABCI
 import           Network.ABCI.Internal.Wire (beWordFromBytes)
-import           Control.Monad (when)
-import qualified Control.Concurrent.STM as STM
-import           Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
-import qualified Data.ByteString.Lazy as LBS
-import           Data.Int (Int64)
-import qualified Data.Binary.Put as Put
-import           Data.Hex (unhex)
-import           Data.String (fromString)
-import           Data.Text (Text)
-import           Text.Printf (printf)
 import           System.Environment
+import           Text.Printf                (printf)
 
 data CounterState = CounterState
   { csSerial    :: !Bool
@@ -49,49 +50,50 @@ main = do
     -- You can do some per-connection initialization here if needed...
 
     return $ App $ \case
-      RequestEcho msg -> return (ResponseEcho msg)
+        RequestEcho msg -> return (ResponseEcho msg)
 
-      RequestFlush -> return def
+        RequestFlush -> return def
 
-      RequestInfo version -> do
-        CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
-        return def
-          { responseInfo'data =
-              fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
-          , responseInfo'version = version
-          }
+        RequestInfo version -> do
+          CounterState{csHashCount=hs, csTxCount=txs} <- STM.readTVarIO stateVar
+          let resp = def
+                { responseInfo'data =
+                    fromString (printf "{\"hashes\":%d, \"txs\":%d}" hs txs)
+                , responseInfo'version = version
+                }
+          liftIO $ print resp
+          return resp
+        RequestSetOption key value -> do
+          when (key=="serial" && value=="on") (STM.atomically enableSerial)
+          return def
 
-      RequestSetOption key value -> do
-        when (key=="serial" && value=="on") (STM.atomically enableSerial)
-        return def
+        RequestDeliverTx txData -> do
+          (code, log') <- processTransaction stateVar txData incTxCount
+          return (ResponseDeliverTx code "" log' [])
 
-      RequestDeliverTx txData -> do
-        (code, log') <- processTransaction stateVar txData incTxCount
-        return (ResponseDeliverTx code "" log' [])
+        RequestCheckTx txData -> do
+          (code, log') <- processTransaction stateVar txData (return ())
+          return (ResponseCheckTx code "" log' 0 0)
 
-      RequestCheckTx txData -> do
-        (code, log') <- processTransaction stateVar txData (return ())
-        return (ResponseCheckTx code "" log' 0 0)
+        RequestCommit -> do
+          STM.atomically incHashCount
+          CounterState{csTxCount} <- STM.readTVarIO stateVar
+          let data' = if csTxCount == 0 then mempty else serializeBe csTxCount
+          return (ResponseCommit data')
 
-      RequestCommit -> do
-        STM.atomically incHashCount
-        CounterState{csTxCount} <- STM.readTVarIO stateVar
-        let data' = if csTxCount == 0 then "" else serializeBe csTxCount
-        return (ResponseCommit codeTypeOK data' "")
+        RequestQuery{requestQuery'path=path} -> do
+          state <- STM.readTVarIO stateVar
+          let retVal v = return def { responseQuery'value = fromString (show v) }
+              retErr msg = return def { responseQuery'log = fromString msg }
+          case path of
+            "hash" -> retVal (csHashCount state)
+            "tx"   -> retVal (csTxCount state)
+            p  -> retErr $ printf
+                    "Invalid query path. Expected hash or tx, got %s" (show p)
 
-      RequestQuery{requestQuery'path=path} -> do
-        state <- STM.readTVarIO stateVar
-        let retVal v = return def { responseQuery'value = fromString (show v) }
-            retErr msg = return def { responseQuery'log = fromString msg }
-        case path of
-          "hash" -> retVal (csHashCount state)
-          "tx"   -> retVal (csTxCount state)
-          p  -> retErr $ printf
-                  "Invalid query path. Expected hash or tx, got %s" (show p)
-
-      RequestInitChain _ -> return def
-      RequestBeginBlock _ _ _ _ -> return def
-      RequestEndBlock _ -> return def
+        RequestInitChain vs cparams -> return (ResponseInitChain vs cparams)
+        RequestBeginBlock{} -> return def
+        RequestEndBlock{} -> return def
 
 serializeBe :: Int64 -> ByteString
 serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
@@ -99,13 +101,13 @@ serializeBe = LBS.toStrict . Put.runPut . Put.putInt64be
 processTransaction
   :: STM.TVar CounterState
   -> ByteString
-  -> (STM.STM ())
+  -> STM.STM ()
   -> IO (CodeType, Text)
 processTransaction stateVar txData increment = STM.atomically $ do
     CounterState{csSerial,csTxCount} <- STM.readTVar stateVar
     case parseTxValue txData of
       Right txValue -> do
-        if (csSerial && txValue /= csTxCount)
+        if csSerial && txValue /= csTxCount
           then return
             ( codeTypeBadNonce
             , fromString
@@ -122,4 +124,4 @@ parseTxValue s =
     Nothing -> Left ("Invalid hex string: " ++ show s)
 
 hasSerialArg :: IO Bool
-hasSerialArg = fmap (any (== "--serial")) getArgs
+hasSerialArg =  getArgs >>= \args -> pure ("--serial" `elem` args)
