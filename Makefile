@@ -7,9 +7,12 @@ install: ## Runs stack install to compile library and counter example app
 hlint: ## Run hlint on all haskell projects
 	stack exec hlint -- -h .hlint.yaml examples src/Network
 
+test: install ## Run the haskell test suite
+	stack test
+
 stylish: ## Run stylish-haskell over all haskell projects
 	find ./examples -name "*.hs" | xargs stylish-haskell -c ./.stylish_haskell.yaml -i
 	find ./src/Network -name "*.hs" | xargs stylish-haskell -c ./.stylish_haskell.yaml -i
 
-counter: install
+run-counter: install
 	stack exec hs-abci-counter
