@@ -5,28 +5,33 @@ Build blockchain applications in Haskell for
 
 [![Build Status](https://travis-ci.org/albertov/hs-abci.svg?branch=master)](https://travis-ci.org/albertov/hs-abci)
 
-## Pre-Install
+## Running the test suites
+```bash
+> make install
+> make test
+```
 
-1. Clone this repository
+## Running the counter example app
+You should start a tendermint node if you want to run the counter app. Assuming you have the tendermint binary somewhere in your path, you can start a fresh node with
 
-  ```sh
-  git clone https://github.com/albertov/hs-abci
-  cd hs-abci
-  ```
+```bash
+> tendermint unsafe_reset_all
+> tendermint init
+> tendermint node
+```
+You can then run the counter app with
+```bash
+> make run-counter
+```
 
-## Install
+You can now post transactions to the tendermint node via curl, for example to change the count to the number `1` you can run
 
-### With stack
+```bash
+> curl 'localhost:26657/broadcast_tx_commit?tx=0x01'
+```
 
-1. Install [stack](https://www.haskellstack.org)
-1. Run `stack install`
+You can also smoke test the counter app using the abci-cli test suite. Assuming the counterapp and you have `abci-cli` binaries in your path ([see here](https://tendermint.com/docs/app-dev/getting-started.html#first-tendermint-app)) you can run
 
-### With cabal
-
-1. Make sure cabal-install is somewhere in the `PATH`
-1. Run `cabal install`
-
-## Run test suite
-
-1. Install [stack](https://www.haskellstack.org)
-1. Run `stack test`
+```bash
+> abci-cli test
+```

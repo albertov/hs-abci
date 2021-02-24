@@ -12,7 +12,7 @@ FIXME: we should check core and/or benchmark this to make sure fusion is
 really happening and change to INLINE to force inlining if it doesn't
 
 -}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE BangPatterns      #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Network.ABCI.Internal.Wire (
@@ -21,73 +21,54 @@ module Network.ABCI.Internal.Wire (
 , beWordFromBytes
 ) where
 
-import qualified Data.Binary.Get as Get
-import qualified Data.Binary.Put as Put
-import           Data.Bits (shiftL)
-import qualified Data.ByteString as BS
-import           Data.ByteString.Lazy (toChunks)
-import           Data.Conduit (Conduit, awaitForever, await, yield)
-import           Data.Monoid ((<>))
-import           Data.Word (Word64)
-import           Text.Printf (printf)
-
-maxMessageLen :: Word64
-maxMessageLen = 1024*1024 -- 1Mb, FIXME how large should we make it?
-
+import           Data.Bits                     (shiftL)
+import qualified Data.ByteString               as BS
+import qualified Data.ByteString.Base16        as BS16
+import           Data.Conduit                  (ConduitT, awaitForever, yield)
+import qualified Data.Conduit.List             as CL
+import           Data.ProtoLens.Encoding.Bytes (getVarInt, putVarInt,
+                                                runBuilder, runParser,
+                                                signedInt64ToWord,
+                                                wordToSignedInt64)
+import           Data.String.Conversions       (cs)
+import           Data.Word                     (Word64)
+import           Text.Printf                   (printf)
 
 -- | Transforms a stream of 'ByteString' to a stream of varlength-prefixed
 --   'ByteString's
 encodeLengthPrefixC
-  :: Monad m
-  => Conduit BS.ByteString m BS.ByteString
-encodeLengthPrefixC = awaitForever $
-  mapM yield . toChunks . Put.runPut . putLengthPrefixedByteString
+  :: Monad m => ConduitT [BS.ByteString] BS.ByteString m ()
+encodeLengthPrefixC = CL.map $ foldMap encodeLengthPrefix
+  where
+    encodeLengthPrefix bytes =
+      let headerN = signedInt64ToWord . fromIntegral . BS.length $ bytes
+          header = runBuilder (putVarInt headerN)
+      in header `BS.append` bytes
 {-# INLINEABLE encodeLengthPrefixC #-}
 
-
--- | Transforms a stream of varlength-prefixed 'ByteString's to a stream
---   of 'ByteString's
 decodeLengthPrefixC
   :: Monad m
-  => Conduit BS.ByteString m (Either String BS.ByteString)
-decodeLengthPrefixC = go "" initialDecoder
+  => ConduitT BS.ByteString (Either String [BS.ByteString]) m ()
+decodeLengthPrefixC = awaitForever $ \bytes ->
+  case splitOffMessages bytes of
+    Left err       -> yield (Left err)
+    Right messages -> yield $ Right messages
   where
-    go leftOver (Get.Done leftOver2 _ result) = do
-      yield (Right result)
-      go (leftOver <> leftOver2) initialDecoder
-    go leftOver (Get.Fail leftOver2 _ err) = do
-      yield (Left err)
-      go (leftOver <> leftOver2) initialDecoder
-    go "" decoder = do
-      mInput <- await
-      case mInput of
-        Nothing -> return ()
-        Just s  -> go "" (Get.pushChunk decoder s)
-    go leftOver decoder =
-      go "" (Get.pushChunk decoder leftOver)
+    splitOffMessages :: BS.ByteString -> Either String [BS.ByteString]
+    splitOffMessages bs
+      | bs == mempty = pure []
+      | otherwise = do
+          n <- runParser getVarInt bs
+          let lengthHeader = runBuilder $ putVarInt n
+          messageBytesWithTail <- case BS.stripPrefix lengthHeader bs of
+            Nothing -> let prefixWithMsg = show @(String, String) (cs . BS16.encode $ lengthHeader, cs . BS16.encode $ bs)
+                       in Left $ "prefix not actually a prefix!: " <> prefixWithMsg
+            Just a -> pure a
+          let (messageBytes, remainder) = BS.splitAt (fromIntegral $ wordToSignedInt64 n) messageBytesWithTail
+          (messageBytes : ) <$> splitOffMessages remainder
 
-    initialDecoder = Get.runGetIncremental getLengthPrefixedByteString
 {-# INLINEABLE decodeLengthPrefixC #-}
 
-putLengthPrefixedByteString :: BS.ByteString -> Put.Put
-putLengthPrefixedByteString s = do
-  Put.putWord8 8
-  Put.putWord64be (fromIntegral (BS.length s))
-  Put.putByteString s
-{-# INLINEABLE putLengthPrefixedByteString #-}
-
-
-getLengthPrefixedByteString :: Get.Get BS.ByteString
-getLengthPrefixedByteString = do
-  lenLen <- fromIntegral <$> Get.getWord8
-  mLen <- beWordFromBytes <$> Get.getByteString lenLen
-  case mLen of
-    Right len ->
-      if len <= maxMessageLen
-        then Get.getByteString (fromIntegral len)
-        else fail "Message is too large"
-    Left err -> fail err
-{-# INLINEABLE getLengthPrefixedByteString #-}
 
 -- Decodes a 'Word64' from an arbitrary length big-endian encoded 'ByteString'
 -- of length <= 8 bytes.

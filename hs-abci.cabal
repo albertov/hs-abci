@@ -1,3 +1,5 @@
+cabal-version:       >=1.24
+
 name:                hs-abci
 version:             0.1.1.0
 synopsis:            Tendermint's ABCI server library
@@ -12,8 +14,6 @@ category:            Network
 build-type:          Simple
 extra-source-files:
     README.md
-  , src/Network/ABCI/types.proto
-cabal-version:       >=1.10
 
 library
   hs-source-dirs:      src
@@ -22,9 +22,19 @@ library
     , Network.ABCI.Types
     , Network.ABCI.Internal.Wire
   other-modules:
-      Proto.Network.ABCI.Types
+      Proto.Types,
+      Proto.Types_Fields,
+      Proto.Vendored.Gogo.Protobuf.Gogoproto.Gogo,
+      Proto.Vendored.Gogo.Protobuf.Gogoproto.Gogo_Fields,
+      Proto.Vendored.Google.Protobuf.Timestamp,
+      Proto.Vendored.Google.Protobuf.Timestamp_Fields,
+      Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle,
+      Proto.Vendored.Tendermint.Tendermint.Crypto.Merkle.Merkle_Fields,
+      Proto.Vendored.Tendermint.Tendermint.Libs.Common.Types,
+      Proto.Vendored.Tendermint.Tendermint.Libs.Common.Types_Fields
   build-depends:
       base >= 4.7 && < 5
+    , base16-bytestring
     , binary
     , bytestring
     , conduit
@@ -34,10 +44,14 @@ library
     , monad-control
     , network
     , proto-lens
-    , proto-lens-protoc
+    , proto-lens-runtime
+    , string-conversions
     , text
     , transformers
+    , unliftio
   default-language:    Haskell2010
+  default-extensions:
+    TypeApplications
   ghc-options:         -Wall
 
 executable hs-abci-counter

@@ -2,7 +2,6 @@
 module Network.ABCI.Internal.WireSpec (main, spec) where
 
 import           Network.ABCI.Internal.Wire
-
 import           Control.Monad (replicateM)
 import qualified Data.Binary.Put as Put
 import qualified Data.ByteString as BS
@@ -56,9 +55,10 @@ spec = do
     it "decoding an encoded bytestring yields the same bytestring" $
       property $ \(bytelist, nonNegativeChunkSizes) ->
         let conduit = chunksProducer bytes nonNegativeChunkSizes
-                  =$= encodeLengthPrefixC
-                  =$= decodeLengthPrefixC
-                  =$= consumeValidChunks
+                   .| CL.map (\a -> [a])
+                   .| encodeLengthPrefixC
+                   .| decodeLengthPrefixC
+                   .| consumeValidChunks
             bytes = BS.pack bytelist
         in runIdConduit conduit == Right bytes
 
@@ -67,8 +67,8 @@ spec = do
     it "fails gracefully when given a string larger than maxMessageLen" $
       let ginormousSizeVarLen = 8 `BS.cons` runPut (Put.putWord64be maxBound)
           conduit = yield ginormousSizeVarLen
-                =$= decodeLengthPrefixC
-                =$= consumeValidChunks
+                 .| decodeLengthPrefixC
+                 .| consumeValidChunks
       in runIdConduit conduit `shouldSatisfy` isLeft
 
 
@@ -82,7 +82,7 @@ spec = do
 -- the connection (according to https://hackage.haskell.org/package/network-bytestring-0.1.3.4/docs/Network-Socket-ByteString.html#v:recv)
 chunksProducer
   :: Monad m
-  => BS.ByteString -> [NonNegative Int] -> Producer m BS.ByteString
+  => BS.ByteString -> [NonNegative Int] -> ConduitT () BS.ByteString m ()
 chunksProducer bs [] = yield bs
 chunksProducer bs _ | BS.null bs = return ()
 chunksProducer bs (c:cs) = yield chunk >> chunksProducer rest cs
@@ -91,7 +91,7 @@ chunksProducer bs (c:cs) = yield chunk >> chunksProducer rest cs
 randomBytestringOfLength :: Int -> Gen BS.ByteString
 randomBytestringOfLength len = BS.pack <$> replicateM len arbitrary
 
-runIdConduit :: Sink () Identity a -> a
+runIdConduit :: ConduitT () Void Identity a -> a
 runIdConduit = runIdentity . runConduit
 
 -- This consumer will concatenate all the valid decoded chunks.
@@ -99,10 +99,11 @@ runIdConduit = runIdentity . runConduit
 -- without checking for further errors
 consumeValidChunks
   :: Monad m
-  => Sink (Either String BS.ByteString) m (Either String BS.ByteString)
+  => ConduitT (Either String [BS.ByteString]) Void m (Either String BS.ByteString)
 consumeValidChunks = CL.fold step (Right BS.empty)
   where
-    step (Right acc) (Right s)  = Right (acc <> s)
+    step (Right acc) (Right [s])  = Right (acc <> s)
+    step (Right _) (Right _)  = Left "Expecting Singleton List"
     step (Right _)   (Left err) = Left err
     step (Left err)  _          = Left err
 
